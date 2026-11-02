@@ -6,6 +6,8 @@ import {
 } from '@nestjs/common';
 import {
   CATALOG_CONFIG,
+  CATALOG_INTERNAL_CONTROLLERS,
+  CATALOG_PUBLIC_CONTROLLERS,
   CatalogConfig,
   CatalogCoreModule,
 } from '../catalog-core/src';
@@ -74,14 +76,15 @@ export class AppModule implements NestModule {
     // Identite du requerant sur les routes publiques. Middleware et non garde : les
     // controleurs du domaine viennent de `catalog-core`, et un garde global toucherait aussi
     // `/health/*` et `/internal/*`, qui n'ont pas d'identite a etablir.
-    consumer
-      .apply(PrincipalMiddleware)
-      .forRoutes({ path: 'v1/(.*)', method: RequestMethod.ALL });
+    //
+    // Accroche aux controleurs, pas a un motif de chemin : voir CATALOG_PUBLIC_CONTROLLERS
+    // dans `catalog-core` pour les deux motifs qui ne s'appliquaient pas.
+    consumer.apply(PrincipalMiddleware).forRoutes(...CATALOG_PUBLIC_CONTROLLERS);
 
     // Les routes internes viennent de `catalog-core`, qui ne peut pas y poser
-    // `InternalGuard` : la protection s'applique donc par chemin.
+    // `InternalGuard` : la protection s'accroche donc a ses controleurs.
     consumer
       .apply(InternalTokenMiddleware)
-      .forRoutes({ path: 'internal/(.*)', method: RequestMethod.ALL });
+      .forRoutes(...CATALOG_INTERNAL_CONTROLLERS);
   }
 }

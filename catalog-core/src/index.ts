@@ -8,7 +8,12 @@
  */
 
 // Le module et ses options de cablage.
-export { CatalogCoreModule, CATALOG_CONFIG } from './catalog-core.module';
+export {
+  CatalogCoreModule,
+  CATALOG_CONFIG,
+  CATALOG_INTERNAL_CONTROLLERS,
+  CATALOG_PUBLIC_CONTROLLERS,
+} from './catalog-core.module';
 export type { CatalogConfig, CatalogCoreOptions } from './catalog-core.module';
 
 // Port de base.

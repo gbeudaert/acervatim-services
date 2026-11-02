@@ -66,4 +66,9 @@ Le CRUD collections / noeuds / items, mutualise par `catalog-generic`, `catalog-
   noeud. Ignorer ce retour laisse une entree orpheline dans le registre.
 - **Un profil de type absent retombe sur le profil permissif**, il ne leve pas. Le vrai
   garde-fou contre un mauvais routage est le registre du gateway, pas ce repli.
+- **Les middlewares des catalogs s'accrochent aux controleurs** (`CATALOG_PUBLIC_CONTROLLERS`,
+  `CATALOG_INTERNAL_CONTROLLERS`), jamais a un motif de chemin. `forRoutes({ path: 'v1/(.*)' })`
+  recoit le prefixe global une seconde fois, et Express 4 lit `internal/(.*)` comme « un point,
+  puis n'importe quoi » : aucun des deux ne s'appliquait, et les routes `/internal/*` - export et
+  suppression RGPD compris - repondaient sans jeton. Corrige le 2026-11-02.
 - PowerShell 5.1 : ni `&&` ni `||` (utiliser `; if ($?) { ... }`). Sources `.ps1` en ASCII pur.

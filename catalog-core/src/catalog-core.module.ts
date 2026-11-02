@@ -21,6 +21,27 @@ import { ShareFilterService } from './share-filter.service';
 import { CollectionTypeProfile } from './types/common';
 import { COLLECTION_TYPE_PROFILES, ProfileRegistry } from './types/registry';
 
+/**
+ * Controleurs des routes publiques (`/v1/*`). Le catalog y pose `PrincipalMiddleware`.
+ *
+ * Exportes pour que le middleware s'accroche **aux controleurs** et non a un motif de chemin :
+ * `forRoutes({ path: 'v1/(.*)' })` etait prefixe une seconde fois par le prefixe global
+ * (`/v1/v1/(.*)`), et `internal/(.*)` part tel quel a Express 4, dont l'analyseur de chemin
+ * lit `(.*)` comme « un point, puis n'importe quoi ». Aucun des deux ne s'appliquait : identite
+ * jamais posee (500 sur toute ecriture), routes internes ouvertes sans jeton. Accroche aux
+ * controleurs, Nest calcule lui-meme les chemins exacts, prefixe et exclusions compris.
+ */
+export const CATALOG_PUBLIC_CONTROLLERS: Type<unknown>[] = [
+  CollectionsController,
+  ItemsController,
+  NodesController,
+];
+
+/** Controleurs des routes `/internal/*`. Le catalog y pose `InternalTokenMiddleware`. */
+export const CATALOG_INTERNAL_CONTROLLERS: Type<unknown>[] = [
+  CatalogInternalController,
+];
+
 export interface CatalogCoreOptions {
   /**
    * Profils de type servis par CE catalog. `catalog-generic` en declare trois, `catalog-manga`
@@ -64,12 +85,7 @@ export class CatalogCoreModule {
   static register(options: CatalogCoreOptions): DynamicModule {
     return {
       module: CatalogCoreModule,
-      controllers: [
-        CollectionsController,
-        ItemsController,
-        NodesController,
-        CatalogInternalController,
-      ],
+      controllers: [...CATALOG_PUBLIC_CONTROLLERS, ...CATALOG_INTERNAL_CONTROLLERS],
       providers: [
         { provide: COLLECTION_TYPE_PROFILES, useValue: options.profiles },
         { provide: CATALOG_DB, useExisting: options.db },
