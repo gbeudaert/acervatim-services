@@ -49,6 +49,9 @@ Catalogue des collections de type manga (NestJS, Prisma, MariaDB). Schema `acv_c
   compilation est `/app` parce que `catalog-core/` en fait partie. D'ou `entryFile: "src/main"`.
 - **`"paths": { "*": ["node_modules/*"] }`** dans le tsconfig : sans lui, les imports nus
   ecrits dans `catalog-core/` seraient cherches depuis un dossier sans `node_modules`.
+- **`"modulePaths": ["<rootDir>/node_modules"]`** dans la config Jest, pour la meme raison : la
+  jonction `catalog-core` apparait dans le conteneur comme un lien vers le chemin hote, et Jest
+  resout depuis le chemin reel. Sans lui, un test qui importe `catalog-core` echoue sur `zod`.
 - Authentification par `PrincipalGuard` (via middleware), pas par un `JwtAuthGuard`.
 - Validation par Zod via `nestjs-zod` (`createZodDto`) - pas de `class-validator`.
 - Erreurs RFC 9457 sous les **memes URI `type`** que le monolithe.
