@@ -1,0 +1,21 @@
+# Image de developpement uniquement (hot reload via volume monte).
+# Version Node alignee sur le monolithe.
+FROM node:24-slim
+
+WORKDIR /app
+
+# openssl : requis par le client Prisma sur images slim
+# procps : fournit `ps`, utilise par `nest start --watch`
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends openssl procps git \
+    && rm -rf /var/lib/apt/lists/*
+
+COPY package.json package-lock.json* ./
+RUN npm install
+
+COPY prisma ./prisma
+RUN npx prisma generate
+
+EXPOSE 3010
+
+CMD ["npm", "run", "start:dev"]

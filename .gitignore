@@ -18,6 +18,3 @@ catalog-*/catalog-core/
 # Le gabarit versionne est deploy/acervatim-secrets.example.yaml.
 deploy/acervatim-secrets.yaml
 deploy/acervatim.assembled.yaml
-
-# catalog-lego a son propre depot git (stack autonome, anterieure a la constellation).
-catalog-lego/
