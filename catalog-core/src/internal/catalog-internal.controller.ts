@@ -3,11 +3,14 @@ import { ApiExcludeController } from '@nestjs/swagger';
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
 import {
+  COLLECTION_TYPE_CODES,
   InternalCollectionOwner,
   InternalDeleteUserData,
   InternalItemCountResponse,
+  InternalNodesPage,
   InternalRegistryEntriesPage,
   InternalUserExportFragment,
+  InternalUserNodes,
   SHARE_STATUSES,
 } from '../contracts';
 import { CatalogInternalService } from './catalog-internal.service';
@@ -29,6 +32,20 @@ const ItemCountSchema = z
   .strict();
 
 class ItemCountDto extends createZodDto(ItemCountSchema) {}
+
+const NodesScopeSchema = z.object({
+  typeCode: z.enum(COLLECTION_TYPE_CODES),
+  level: z.string().min(1).max(32),
+});
+
+class UserNodesQuery extends createZodDto(NodesScopeSchema.strict()) {}
+
+class NodesPageQuery extends createZodDto(
+  NodesScopeSchema.extend({
+    cursor: z.string().uuid().optional(),
+    limit: z.coerce.number().int().min(1).max(1000).default(500),
+  }).strict(),
+) {}
 
 /**
  * Routes internes du catalog - jamais exposees par le gateway (6 de
@@ -65,6 +82,21 @@ export class CatalogInternalController {
     @Query('limit') limit?: string,
   ): Promise<InternalRegistryEntriesPage> {
     return this.internal.registryEntries(cursor, Number(limit) || 500);
+  }
+
+  /** Appelee par le rattrapage hebdomadaire de `search` : noeuds d'un type et d'un niveau. */
+  @Get('nodes')
+  async nodesPage(@Query() q: NodesPageQuery): Promise<InternalNodesPage> {
+    return this.internal.nodesPage(q.typeCode, q.level, q.cursor, q.limit);
+  }
+
+  /** Appelee par `search` pour `GET /v1/series-updates` : noeuds d'un compte + volumes. */
+  @Get('users/:userId/nodes')
+  async userNodes(
+    @Param('userId') userId: string,
+    @Query() q: UserNodesQuery,
+  ): Promise<InternalUserNodes> {
+    return this.internal.userNodes(userId, q.typeCode, q.level);
   }
 
   /** Participant de la saga RGPD (3.4), idempotent. */

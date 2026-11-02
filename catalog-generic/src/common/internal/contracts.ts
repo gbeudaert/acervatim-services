@@ -88,6 +88,40 @@ export interface InternalItemCountResponse {
   counts: Array<{ collectionId: string; count: number; name: string }>;
 }
 
+/**
+ * `GET /internal/nodes?typeCode=&level=&cursor=&limit=` - servie par `catalog-*`, appelee par
+ * `search` (rattrapage hebdomadaire des tomes manga parus apres l'import).
+ *
+ * Re-scan pagine des noeuds d'un type et d'un niveau, **tous comptes confondus** : c'est la
+ * lecture `collectionNode.findMany` que le job faisait directement dans le monolithe. Le
+ * filtre premium n'est pas fait ici - le premium vit dans `billing`, et c'est l'appelant qui
+ * le demande, une fois par compte.
+ *
+ * `unifiedData` part tel quel : c'est l'appelant qui sait ce qu'il y cherche (titre, editeur,
+ * edition). Le catalog n'a pas a connaitre la notion d'edition, qui n'est qu'un champ de son
+ * profil de type.
+ *
+ * Meme contrat de pagination que `registry/entries` : pagine et non transactionnel. Un noeud
+ * cree pendant le scan peut etre manque ; il le sera au passage suivant.
+ */
+export interface InternalNodesPage {
+  nodes: Array<{ nodeId: string; userId: string; unifiedData: unknown }>;
+  nextCursor: string | null;
+}
+
+/**
+ * `GET /internal/users/:userId/nodes?typeCode=&level=` - servie par `catalog-*`, appelee par
+ * `search` pour `GET /v1/series-updates`.
+ *
+ * Les noeuds d'un type et d'un niveau pour un compte, avec les numeros de volume deja presents
+ * sous chacun, **tous statuts confondus** (possede, wishlist, ignore) : un tome deja en base ne
+ * doit pas etre repropose, quel que soit son statut. Le monolithe l'obtenait par deux requetes
+ * sur `collection_nodes` et `items` ; les deux tables etant ici, la jointure reste ici.
+ */
+export interface InternalUserNodes {
+  nodes: Array<{ nodeId: string; unifiedData: unknown; volumes: number[] }>;
+}
+
 // --------------------------------------------------------------------------- gateway
 
 /**

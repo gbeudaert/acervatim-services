@@ -28,7 +28,8 @@ Le CRUD collections / noeuds / items, mutualise par `catalog-generic`, `catalog-
 - `src/access.ts` : `CollectionAccess`, desormais **lu** depuis le principal signe et non
   resolu.
 - `src/clients/` : registre de routage (gateway) et snapshot de source (`search`).
-- `src/internal/` : les routes `/internal/*` du catalog (owner, comptage, re-scan, RGPD).
+- `src/internal/` : les routes `/internal/*` du catalog (owner, comptage, re-scan, RGPD, noeuds
+  par type et niveau pour le rattrapage manga de `search`).
 - `src/contracts.ts` : copie du contrat inter-services, comme dans chaque service.
 
 ## Running and verifying

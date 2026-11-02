@@ -3,7 +3,9 @@ import {
   CollectionTypeCode,
   InternalCollectionOwner,
   InternalItemCountResponse,
+  InternalNodesPage,
   InternalRegistryEntriesPage,
+  InternalUserNodes,
   ShareStatus,
 } from '../contracts';
 import { CATALOG_DB, CatalogDb } from '../db';
@@ -147,6 +149,82 @@ export class CatalogInternalService {
         })),
       ],
       nextCursor: hasMore ? page[page.length - 1].id : null,
+    };
+  }
+
+  /**
+   * Page du re-scan des noeuds d'un type et d'un niveau, tous comptes confondus. Appelee par
+   * le rattrapage hebdomadaire de `search`, qui y cherche les series manga a surveiller.
+   *
+   * Meme pagination que {@link registryEntries} : curseur sur l'id, non transactionnelle.
+   */
+  async nodesPage(
+    typeCode: string,
+    level: string,
+    cursor: string | undefined,
+    limit: number,
+  ): Promise<InternalNodesPage> {
+    const take = Math.min(Math.max(limit, 1), MAX_SCAN_PAGE);
+    const nodes = await this.prisma.collectionNode.findMany({
+      where: { level, collection: { typeCode } },
+      take: take + 1,
+      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
+      orderBy: { id: 'asc' },
+      select: { id: true, userId: true, unifiedData: true },
+    });
+    const hasMore = nodes.length > take;
+    const page = hasMore ? nodes.slice(0, take) : nodes;
+    return {
+      nodes: page.map((n) => ({
+        nodeId: n.id,
+        userId: n.userId,
+        unifiedData: n.unifiedData,
+      })),
+      nextCursor: hasMore ? page[page.length - 1].id : null,
+    };
+  }
+
+  /**
+   * Noeuds d'un type et d'un niveau pour un compte, avec les volumes deja presents sous
+   * chacun (tous statuts). Appelee par `search` pour `GET /v1/series-updates`.
+   *
+   * Non pagine, comme la lecture du monolithe qu'elle remplace : un compte a quelques dizaines
+   * de series, et la reponse ne porte que leurs `unifiedData` et des entiers.
+   */
+  async userNodes(
+    userId: string,
+    typeCode: string,
+    level: string,
+  ): Promise<InternalUserNodes> {
+    const nodes = await this.prisma.collectionNode.findMany({
+      where: { userId, level, collection: { typeCode } },
+      orderBy: { id: 'asc' },
+      select: { id: true, unifiedData: true },
+    });
+    if (nodes.length === 0) return { nodes: [] };
+
+    const items = await this.prisma.item.findMany({
+      where: {
+        userId,
+        nodeId: { in: nodes.map((n) => n.id) },
+        volume: { not: null },
+      },
+      select: { nodeId: true, volume: true },
+    });
+    const volumesByNode = new Map<string, Set<number>>();
+    for (const it of items) {
+      if (it.nodeId === null || it.volume === null) continue;
+      const set = volumesByNode.get(it.nodeId) ?? new Set<number>();
+      set.add(it.volume);
+      volumesByNode.set(it.nodeId, set);
+    }
+
+    return {
+      nodes: nodes.map((n) => ({
+        nodeId: n.id,
+        unifiedData: n.unifiedData,
+        volumes: [...(volumesByNode.get(n.id) ?? [])].sort((a, b) => a - b),
+      })),
     };
   }
 
