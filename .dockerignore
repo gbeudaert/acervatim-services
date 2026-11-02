@@ -1,0 +1,42 @@
+# Contexte de build de la RACINE, utilise par les trois catalogs : leur Dockerfile a besoin
+# de `catalog-core/` en plus de leur propre dossier, donc leur contexte est backend-services/.
+# Les six autres services se construisent depuis leur propre dossier, avec leur .dockerignore.
+
+# **La ligne qui compte.** Sur l'hote, `catalog-*/catalog-core` est une jonction vers
+# `catalog-core/` : sans cette exclusion, le contexte de build embarquerait trois copies de la
+# bibliotheque - et, selon la facon dont le moteur suit les jonctions, pourrait boucler.
+# Le Dockerfile copie `catalog-core/` depuis la racine, une seule fois.
+catalog-*/catalog-core/
+
+node_modules
+*/node_modules
+dist
+*/dist
+coverage
+*/coverage
+logs
+*/logs
+*.log
+
+.git
+.env
+.env.*
+*/.env
+*/.env.*
+!*/.env.example
+
+# Artefact regenere au bootstrap hors production.
+*/openapi.json
+
+# Stack autonome, anterieure a la constellation : elle a ses propres images.
+catalog-lego
+
+# Les units de deploiement ne servent pas au build des images applicatives ; seul
+# deploy/Dockerfile.migrate a besoin des dossiers `prisma/`, deja inclus.
+deploy/*.container
+deploy/*.network
+deploy/*.kube
+deploy/*.md
+
+*.tar
+.DS_Store

@@ -1,0 +1,18 @@
+# Reseau Podman de la constellation micro-services.
+#
+# Nom distinct de celui du monolithe (`acervatim`, cf. acervatim-backend/deploy/) : les deux
+# doivent pouvoir tourner en parallele pendant la bascule, sans qu'un service de l'un ne
+# resolve par accident un conteneur de l'autre.
+#
+# Il porte deux resolutions de nom, et deux seulement :
+#   - le pod applicatif -> `acervatim-db` et `acervatim-redis` ;
+#   - rien d'autre. Les neuf services se parlent en `localhost` (meme pod), et personne
+#     d'autre n'a de raison d'entrer.
+#
+# Installation (rootless) :
+#   cp acervatim-services.network ~/.config/containers/systemd/
+#   systemctl --user daemon-reload
+# Le reseau est cree automatiquement au demarrage des unites qui le referencent.
+
+[Network]
+NetworkName=acervatim-services

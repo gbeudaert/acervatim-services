@@ -1,0 +1,50 @@
+# Image de migration de la constellation. **Une seule pour les neuf schemas.**
+#
+# Le monolithe utilisait une cible `--target migrate` dans son propre Dockerfile. A neuf
+# services, cela ferait neuf images de plus a construire, taguer et deployer ensemble, pour
+# neuf invocations d'un meme CLI. Une image unique qui porte les neuf dossiers `prisma/` et
+# les joue en sequence est plus simple a operer - et surtout, elle rend l'**ordre** des
+# migrations explicite et reproductible, ce que neuf conteneurs independants ne garantissent
+# pas.
+#
+# Elle ne contient aucun code applicatif : seulement le CLI prisma et les migrations SQL.
+#
+# Build (depuis la racine backend-services/) :
+#   podman build -f deploy/Dockerfile.migrate -t localhost/acervatim-migrate:0.1.0 .
+#
+# Lancement manuel (hors pod, pour un diagnostic) :
+#   podman run --rm --network acervatim-services \
+#     -e DATABASE_URL_IDENTITY='mysql://...' localhost/acervatim-migrate:0.1.0
+# (une variable par schema a migrer ; celles qui manquent sont simplement ignorees)
+#
+# En fonctionnement nominal, c'est l'initContainer du pod qui l'execute : voir
+# `acervatim.yaml`. Les migrations passent donc **avant** que le moindre service ne demarre.
+
+FROM registry.access.redhat.com/ubi9/nodejs-24:latest
+
+WORKDIR /opt/app-root/src
+
+USER 0
+
+# Le seul paquet necessaire. Version epinglee sur celle des services : une CLI plus recente
+# que le client pourrait ecrire un journal de migration que ceux-ci ne relisent pas.
+RUN npm install --no-save --no-audit --no-fund prisma@6.19.3
+
+# Un dossier `prisma/` par service. Chacun porte son `schema.prisma` et ses migrations SQL ;
+# aucun ne connait les autres - c'est l'invariant « un schema logique par service ».
+COPY gateway/prisma          ./schemas/gateway
+COPY identity/prisma         ./schemas/identity
+COPY billing/prisma          ./schemas/billing
+COPY connections/prisma      ./schemas/connections
+COPY sharing/prisma          ./schemas/sharing
+COPY search/prisma           ./schemas/search
+COPY catalog-generic/prisma  ./schemas/catalog-generic
+COPY catalog-manga/prisma    ./schemas/catalog-manga
+COPY catalog-vinyl/prisma    ./schemas/catalog-vinyl
+
+COPY deploy/migrate.sh ./migrate.sh
+RUN chmod +x ./migrate.sh && chown -R 1001:0 /opt/app-root/src
+
+USER 1001
+
+ENTRYPOINT ["./migrate.sh"]

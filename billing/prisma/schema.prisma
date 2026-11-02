@@ -1,0 +1,93 @@
+// Schema du service billing. Schema logique dedie (`acv_billing`) sur l'instance MariaDB
+// partagee : AUCUNE relation ne franchit la frontiere du service (cf.
+// ../../../acervatim-docs/agent/backend/architecture-microservices.md, invariant central).
+//
+// `userId` est partout une colonne nue, sans `@relation` vers `users` : cette table
+// appartient a `identity`. C'est ce qui fait disparaitre la cascade de suppression, et ce
+// que la saga RGPD remplace (3.4).
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Premium ----------
+
+/// Abonnement Google Play. Un utilisateur a au plus une ligne courante, d'ou le `userId` en
+/// cle primaire.
+model Subscription {
+  userId         String   @id @map("user_id") @db.Char(36)
+  /// `active` | `grace_period` | `on_hold` | `paused` | `cancelled` | `expired`.
+  status         String   @db.VarChar(16)
+  productId      String   @map("product_id") @db.VarChar(64)
+  /// Unique : c'est par lui qu'un RTDN retrouve l'utilisateur concerne.
+  purchaseToken  String   @unique @map("purchase_token") @db.VarChar(512)
+  expiresAt      BigInt   @map("expires_at")
+  autoRenew      Boolean  @default(true) @map("auto_renew")
+  startedAt      DateTime @default(now()) @map("started_at")
+  lastVerifiedAt DateTime @default(now()) @map("last_verified_at")
+  cancelReason   String?  @map("cancel_reason") @db.VarChar(64)
+
+  /// Le cron de reconciliation balaie par cet index : les abonnements actifs qui expirent
+  /// bientot, pour rattraper un RTDN perdu.
+  @@index([status, expiresAt])
+  @@map("subscriptions")
+}
+
+/// Premium accorde a la main (beta-testeur, geste commercial, invitation). Prioritaire sur
+/// l'abonnement : un beta-testeur qui souscrit quand meme ne doit pas perdre son grant.
+model PremiumGrant {
+  userId    String   @id @map("user_id") @db.Char(36)
+  reason    String   @db.VarChar(32)
+  grantedBy String?  @map("granted_by") @db.VarChar(64)
+  grantedAt DateTime @default(now()) @map("granted_at")
+  /// epoch ms ; null = permanent.
+  expiresAt BigInt?  @map("expires_at")
+  notes     String?  @db.Text
+
+  @@map("premium_grants")
+}
+
+// ---------- Invitations ----------
+
+/// Code d'invitation anonyme. Pas d'email, pas de cible : le code voyage hors-bande.
+/// On ne stocke que HMAC-SHA-256(code, INVITE_CODE_PEPPER) - le code en clair n'est
+/// retourne qu'a la creation, a l'admin, et n'existe ensuite nulle part.
+model Invitation {
+  codeHash         String   @id @map("code_hash") @db.Char(64)
+  reason           String   @db.VarChar(32)
+  grantsPremium    Boolean  @default(false) @map("grants_premium")
+  premiumExpiresAt BigInt?  @map("premium_expires_at")
+  maxUses          Int      @default(1) @map("max_uses")
+  usedCount        Int      @default(0) @map("used_count")
+  expiresAt        BigInt?  @map("expires_at")
+  createdBy        String?  @map("created_by") @db.VarChar(64)
+  notes            String?  @db.Text
+  createdAt        DateTime @default(now()) @map("created_at")
+
+  redemptions InvitationRedemption[]
+
+  @@index([expiresAt])
+  @@map("invitations")
+}
+
+/// Trace de claim : empeche un meme utilisateur de re-declencher un grant via le meme code.
+///
+/// La relation vers `Invitation` **reste** : les deux tables vivent dans le meme schema. La
+/// regle interdit les relations qui franchissent une frontiere de service, pas les relations
+/// tout court - les supprimer par principe couterait une integrite qu'on peut garder.
+model InvitationRedemption {
+  invitationCodeHash String   @map("invitation_code_hash") @db.Char(64)
+  userId             String   @map("user_id") @db.Char(36)
+  redeemedAt         DateTime @default(now()) @map("redeemed_at")
+
+  invitation Invitation @relation(fields: [invitationCodeHash], references: [codeHash], onDelete: Cascade)
+
+  @@id([invitationCodeHash, userId])
+  @@index([userId])
+  @@map("invitation_redemptions")
+}

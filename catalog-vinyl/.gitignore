@@ -1,0 +1,45 @@
+# Compiled output
+dist/
+build/
+*.tsbuildinfo
+
+# Node
+node_modules/
+npm-debug.log*
+
+# Tests
+coverage/
+.nyc_output/
+
+# Logs
+logs/
+*.log
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+*.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# OpenAPI artefact regenere a chaque bootstrap
+openapi.json
+
+# Claude Code config locale
+.claude/
+
+# Images conteneur construites localement
+*.tar
+
+# BMad Method - installation partagee, branchee par jonctions
+/_bmad/
+/_bmad-output/
+
+# Jonction locale vers ../catalog-core, recreee par `../scripts/dev.ps1 link-core`.
+# Dans le conteneur, le dossier est copie/monte au meme endroit (voir Dockerfile.dev).
+/catalog-core/

@@ -1,0 +1,41 @@
+// Schema du service search. Schema logique dedie (`acv_search`) sur l'instance MariaDB
+// partagee : AUCUNE relation ne franchit la frontiere du service (cf.
+// ../../../acervatim-docs/agent/backend/architecture-microservices.md, invariant central).
+//
+// Ce service est **deja autonome dans le monolithe** : files BullMQ, `api_cache`, adapters,
+// et il ne lit aucune table du domaine collection. Son extraction est quasi sans couture -
+// c'est pourquoi l'architecture s'en sert pour valider le transport interne a faible risque.
+//
+// Une seule table, et elle ne contient **aucune donnee d'utilisateur**.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+/// Cache des reponses de sources externes.
+///
+/// **Aucune cle ne porte de `userId`, et c'est structurel.** Les reponses de catalogue sont
+/// publiques (BnF, Google Books, MangaDex, Discogs, MAL, TMDB) : les partager entre
+/// utilisateurs ne fuit rien, et c'est precisement ce qui rend possible
+///  - le **mode degrade** (un utilisateur sans jeton lit ce qu'un autre a rempli),
+///  - et l'economie de quota qui permet au repli premium de tenir.
+///
+/// Consequence directe : ce service n'a rien a supprimer lors d'une suppression de compte
+/// (cf. `DELETE /internal/users/:id/data`, qui rend `0`).
+///
+/// MariaDB n'a pas de TTL sur les lignes : `expiresAt` est respecte a la lecture, et un cron
+/// applicatif supprime les lignes perimees.
+model ApiCache {
+  cacheKey  String   @id @map("cache_key") @db.VarChar(255)
+  payload   Json
+  fetchedAt DateTime @default(now()) @map("fetched_at")
+  expiresAt DateTime @map("expires_at")
+
+  @@index([expiresAt])
+  @@map("api_cache")
+}

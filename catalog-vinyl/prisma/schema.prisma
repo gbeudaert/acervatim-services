@@ -1,0 +1,117 @@
+// Schema d'un service catalog. Schema logique dedie (`acv_cat_<type>`) sur l'instance MariaDB
+// partagee : AUCUNE relation ne franchit la frontiere du service (cf.
+// ../../../acervatim-docs/agent/backend/architecture-microservices.md, invariant central).
+//
+// **Ce fichier est identique dans les trois catalogs**, au nom de la base pres. C'est le
+// pendant de `catalog-core` cote donnees : les trois types partagent le meme modele, seul le
+// profil applicatif differe. Le garder identique est ce qui permet a `catalog-core` d'etre
+// compile contre les trois clients Prisma generes.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+/// Une collection de l'utilisateur.
+///
+/// Deux differences avec le monolithe, toutes deux imposees par le decoupage :
+///  - **plus de relation vers `User`** : `users` appartient a `identity`, donc plus de cascade
+///    de suppression - c'est la saga RGPD qui la remplace (3.4) ;
+///  - **`typeCode` remplace `typeId`** : la FK pointait `collection_types`, qui appartient
+///    desormais a `identity`. Le code stable est stocke en clair, ce qui supprime a la fois la
+///    FK inter-schemas et une jointure sur chaque lecture. La reponse de l'API ne change pas :
+///    elle exposait deja le code, pas l'UUID.
+model Collection {
+  id          String   @id @default(uuid()) @db.Char(36)
+  /// Colonne nue, sans FK.
+  userId      String   @map("user_id") @db.Char(36)
+  /// `vinyl` | `manga` | `movie` | `book` | `game`.
+  typeCode    String   @map("type_code") @db.VarChar(32)
+  name        String   @db.VarChar(255)
+  description String?  @db.Text
+  /// Denormalise, maintenu dans la meme transaction que la creation ou la suppression d'un
+  /// item. Reste local au catalog - il ne compte que SES items, et c'est exact : une
+  /// collection appartient a un seul type, donc a un seul catalog.
+  itemCount   Int      @default(0) @map("item_count")
+  createdAt   DateTime @default(now()) @map("created_at")
+  updatedAt   DateTime @updatedAt @map("updated_at")
+
+  items Item[]
+  nodes CollectionNode[]
+
+  /// L'ordre de `GET /v1/collections` : `(createdAt desc, id desc)`. **Le meme que celui du
+  /// scatter-gather du gateway** (3.7) - changer l'un sans l'autre casse la fusion en silence.
+  @@index([userId, createdAt])
+  @@index([typeCode])
+  @@map("collections")
+}
+
+/// Un item : un tome (manga), un disque (vinyle), un film...
+model Item {
+  id           String   @id @default(uuid()) @db.Char(36)
+  collectionId String   @map("collection_id") @db.Char(36)
+  /// Denormalise pour les requetes par utilisateur (plafonds, export RGPD, recherche
+  /// `items[in]`). Colonne nue, sans FK.
+  userId       String   @map("user_id") @db.Char(36)
+  /// Serie (manga) ; `null` pour un type plat (vinyle) ou un tome detache.
+  nodeId       String?  @map("node_id") @db.Char(36)
+  /// Numero de tome ; `null` pour un hors-serie ou un type plat.
+  volume       Int?
+  /// VERITE curee par l'utilisateur, validee par le profil du type.
+  unifiedData  Json     @map("unified_data")
+  /// `[{ provider, externalId, rawData, fetchedAt }]`. `rawData` a `null` = reference sans
+  /// snapshot (provider sans adapter).
+  sources      Json     @default("[]")
+  /// Perso et subjectif : note, prix, derniere ecoute, **statut de possession**.
+  ///
+  /// C'est ce dernier qui rend le 3.1 possible : le statut d'un item vit ici, donc chez le
+  /// catalog, donc le filtrage par portee de partage est un predicat local - `sharing` n'a
+  /// plus besoin de lire `items`.
+  userData     Json     @default("{}") @map("user_data")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  collection Collection      @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  node       CollectionNode? @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  /// Un tome par (serie, volume). **Tient tel quel apres le decoupage** : `nodeId` n'existe
+  /// que pour les types hierarchiques et ne franchit jamais une frontiere de catalog (3.8).
+  @@unique([userId, nodeId, volume])
+  @@index([collectionId, createdAt])
+  @@index([nodeId])
+  @@map("items")
+}
+
+/// Noeud de hierarchie materialise : une serie (manga) est un noeud, ses tomes sont des items.
+///
+/// Un noeud porte ses **propres** `sources[]` (MAL ne connait que les series), independantes
+/// de celles de ses items (ISBN).
+model CollectionNode {
+  id           String   @id @default(uuid()) @db.Char(36)
+  collectionId String   @map("collection_id") @db.Char(36)
+  userId       String   @map("user_id") @db.Char(36)
+  parentId     String?  @map("parent_id") @db.Char(36)
+  /// `serie` | `set` - la cle du niveau dans le profil de type.
+  level        String   @db.VarChar(32)
+  unifiedData  Json     @map("unified_data")
+  sources      Json     @default("[]")
+  /// Note et commentaire de l'utilisateur sur la serie.
+  userData     Json     @default("{}") @map("user_data")
+  /// Survit a `ownedCount = 0` : une serie desiree sans aucun tome doit continuer d'exister.
+  isWishlist   Boolean  @default(false) @map("is_wishlist")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  collection Collection       @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  parent     CollectionNode?  @relation("NodeTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children   CollectionNode[] @relation("NodeTree")
+  items      Item[]
+
+  @@index([collectionId, level])
+  @@index([parentId])
+  @@map("collection_nodes")
+}

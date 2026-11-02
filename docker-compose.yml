@@ -1,0 +1,246 @@
+# Constellation micro-services Acervatim - stack de developpement local.
+#
+# UNE instance MariaDB, UN schema logique par service, UN Redis : c'est la topologie cible du
+# 7 de ../../acervatim-docs/agent/backend/architecture-microservices.md, pas une commodite de
+# dev. Les schemas sont crees par db/init/01-schemas.sql a la premiere creation du volume.
+#
+# `catalog-lego` n'est PAS ici : il a sa propre stack (3010/3307/6380), anterieure a la
+# constellation, et tourne en parallele sans conflit.
+#
+# Ports : 3100 gateway (le seul que l'app connait), 3110-3180 services, 3320 MariaDB,
+# 6390 Redis. Tous decales pour cohabiter avec le monolithe (3000/3306/6379) et avec LEGO.
+
+x-service-base: &service-base
+  restart: unless-stopped
+  env_file:
+    - .env
+  depends_on:
+    db:
+      condition: service_healthy
+    redis:
+      condition: service_healthy
+
+x-service-env: &service-env
+  NODE_ENV: development
+  REDIS_HOST: redis
+  REDIS_PORT: 6379
+
+services:
+  # ---------------------------------------------------------------- infrastructure
+  db:
+    image: mariadb:10.11
+    container_name: acervatim-db
+    ports:
+      - '3320:3306'
+    environment:
+      MARIADB_ROOT_PASSWORD: ${MARIADB_ROOT_PASSWORD:-rootpassword}
+      # Base d'amorce : les schemas par service sont crees par le script d'init.
+      MARIADB_DATABASE: acv_gateway
+      MARIADB_USER: ${MARIADB_USER:-acervatim}
+      MARIADB_PASSWORD: ${MARIADB_PASSWORD:-changeme}
+    volumes:
+      - services_db_data:/var/lib/mysql
+      - ./db/init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ['CMD', 'healthcheck.sh', '--connect', '--innodb_initialized']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
+
+  redis:
+    image: redis:7-alpine
+    container_name: acervatim-redis
+    ports:
+      - '6390:6379'
+    # noeviction : un job de file (import d'edition, refresh OAuth, saga RGPD) ne doit
+    # jamais etre evince sous pression memoire - il disparaitrait sans trace.
+    command: ['redis-server', '--maxmemory-policy', 'noeviction']
+    healthcheck:
+      test: ['CMD', 'redis-cli', 'ping']
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # ---------------------------------------------------------------- point d'entree
+  gateway:
+    <<: *service-base
+    build:
+      context: ./gateway
+      dockerfile: Dockerfile.dev
+    container_name: acervatim-gateway
+    ports:
+      - '3100:3100'
+    environment:
+      <<: *service-env
+      PORT: 3100
+      DATABASE_URL: 'mysql://${MARIADB_USER:-acervatim}:${MARIADB_PASSWORD:-changeme}@db:3306/acv_gateway'
+      IDENTITY_BASE_URL: http://identity:3110
+      BILLING_BASE_URL: http://billing:3120
+      CONNECTIONS_BASE_URL: http://connections:3130
+      SHARING_BASE_URL: http://sharing:3140
+      SEARCH_BASE_URL: http://search:3150
+      CATALOG_GENERIC_BASE_URL: http://catalog-generic:3160
+      CATALOG_MANGA_BASE_URL: http://catalog-manga:3170
+      CATALOG_VINYL_BASE_URL: http://catalog-vinyl:3180
+    volumes:
+      - ./gateway:/app
+      - /app/node_modules
+
+  # ---------------------------------------------------------------- transverses
+  identity:
+    <<: *service-base
+    build:
+      context: ./identity
+      dockerfile: Dockerfile.dev
+    container_name: acervatim-identity
+    ports:
+      - '3110:3110'
+    environment:
+      <<: *service-env
+      PORT: 3110
+      DATABASE_URL: 'mysql://${MARIADB_USER:-acervatim}:${MARIADB_PASSWORD:-changeme}@db:3306/acv_core'
+      BILLING_BASE_URL: http://billing:3120
+      # Participants de la saga RGPD (3.4) : identity orchestre, les autres subissent.
+      SAGA_PARTICIPANTS: 'billing=http://billing:3120,connections=http://connections:3130,sharing=http://sharing:3140,search=http://search:3150,catalog-generic=http://catalog-generic:3160,catalog-manga=http://catalog-manga:3170,catalog-vinyl=http://catalog-vinyl:3180'
+    volumes:
+      - ./identity:/app
+      - /app/node_modules
+
+  billing:
+    <<: *service-base
+    build:
+      context: ./billing
+      dockerfile: Dockerfile.dev
+    container_name: acervatim-billing
+    ports:
+      - '3120:3120'
+    environment:
+      <<: *service-env
+      PORT: 3120
+      DATABASE_URL: 'mysql://${MARIADB_USER:-acervatim}:${MARIADB_PASSWORD:-changeme}@db:3306/acv_billing'
+      IDENTITY_BASE_URL: http://identity:3110
+      GATEWAY_BASE_URL: http://gateway:3100
+    volumes:
+      - ./billing:/app
+      - /app/node_modules
+
+  connections:
+    <<: *service-base
+    build:
+      context: ./connections
+      dockerfile: Dockerfile.dev
+    container_name: acervatim-connections
+    ports:
+      - '3130:3130'
+    environment:
+      <<: *service-env
+      PORT: 3130
+      DATABASE_URL: 'mysql://${MARIADB_USER:-acervatim}:${MARIADB_PASSWORD:-changeme}@db:3306/acv_conn'
+      IDENTITY_BASE_URL: http://identity:3110
+      BILLING_BASE_URL: http://billing:3120
+    volumes:
+      - ./connections:/app
+      - /app/node_modules
+
+  sharing:
+    <<: *service-base
+    build:
+      context: ./sharing
+      dockerfile: Dockerfile.dev
+    container_name: acervatim-sharing
+    ports:
+      - '3140:3140'
+    environment:
+      <<: *service-env
+      PORT: 3140
+      DATABASE_URL: 'mysql://${MARIADB_USER:-acervatim}:${MARIADB_PASSWORD:-changeme}@db:3306/acv_sharing'
+      IDENTITY_BASE_URL: http://identity:3110
+      BILLING_BASE_URL: http://billing:3120
+      CATALOG_GENERIC_BASE_URL: http://catalog-generic:3160
+      CATALOG_MANGA_BASE_URL: http://catalog-manga:3170
+      CATALOG_VINYL_BASE_URL: http://catalog-vinyl:3180
+    volumes:
+      - ./sharing:/app
+      - /app/node_modules
+
+  search:
+    <<: *service-base
+    build:
+      context: ./search
+      dockerfile: Dockerfile.dev
+    container_name: acervatim-search
+    ports:
+      - '3150:3150'
+    environment:
+      <<: *service-env
+      PORT: 3150
+      DATABASE_URL: 'mysql://${MARIADB_USER:-acervatim}:${MARIADB_PASSWORD:-changeme}@db:3306/acv_search'
+      IDENTITY_BASE_URL: http://identity:3110
+      CONNECTIONS_BASE_URL: http://connections:3130
+    volumes:
+      - ./search:/app
+      - /app/node_modules
+
+  # ---------------------------------------------------------------- catalogs par type
+  # Contexte de build = la racine : ces trois-la consomment `catalog-core`, la bibliotheque
+  # du CRUD mutualise. Le forker par type est precisement ce que le decoupage evite.
+  catalog-generic:
+    <<: *service-base
+    build:
+      context: .
+      dockerfile: catalog-generic/Dockerfile.dev
+    container_name: acervatim-catalog-generic
+    ports:
+      - '3160:3160'
+    environment:
+      <<: *service-env
+      PORT: 3160
+      DATABASE_URL: 'mysql://${MARIADB_USER:-acervatim}:${MARIADB_PASSWORD:-changeme}@db:3306/acv_cat_generic'
+      IDENTITY_BASE_URL: http://identity:3110
+      GATEWAY_BASE_URL: http://gateway:3100
+    volumes:
+      - ./catalog-generic:/app
+      - ./catalog-core:/app/catalog-core
+      - /app/node_modules
+
+  catalog-manga:
+    <<: *service-base
+    build:
+      context: .
+      dockerfile: catalog-manga/Dockerfile.dev
+    container_name: acervatim-catalog-manga
+    ports:
+      - '3170:3170'
+    environment:
+      <<: *service-env
+      PORT: 3170
+      DATABASE_URL: 'mysql://${MARIADB_USER:-acervatim}:${MARIADB_PASSWORD:-changeme}@db:3306/acv_cat_manga'
+      IDENTITY_BASE_URL: http://identity:3110
+      GATEWAY_BASE_URL: http://gateway:3100
+    volumes:
+      - ./catalog-manga:/app
+      - ./catalog-core:/app/catalog-core
+      - /app/node_modules
+
+  catalog-vinyl:
+    <<: *service-base
+    build:
+      context: .
+      dockerfile: catalog-vinyl/Dockerfile.dev
+    container_name: acervatim-catalog-vinyl
+    ports:
+      - '3180:3180'
+    environment:
+      <<: *service-env
+      PORT: 3180
+      DATABASE_URL: 'mysql://${MARIADB_USER:-acervatim}:${MARIADB_PASSWORD:-changeme}@db:3306/acv_cat_vinyl'
+      IDENTITY_BASE_URL: http://identity:3110
+      GATEWAY_BASE_URL: http://gateway:3100
+    volumes:
+      - ./catalog-vinyl:/app
+      - ./catalog-core:/app/catalog-core
+      - /app/node_modules
+
+volumes:
+  services_db_data:

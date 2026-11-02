@@ -1,0 +1,23 @@
+# Environnement de la constellation : un seul fichier pour toute la stack, jamais versionne.
+.env
+.env.local
+.env.*.local
+
+# Chaque service a son propre .gitignore ; ces motifs valent pour la racine et les jonctions.
+node_modules/
+dist/
+coverage/
+*.log
+
+# Jonctions locales catalog-*/catalog-core, recreees par `./scripts/dev.ps1 link-core`.
+catalog-*/catalog-core/
+
+.DS_Store
+
+# Manifeste de deploiement assemble et secret rempli : ils portent les cles de production.
+# Le gabarit versionne est deploy/acervatim-secrets.example.yaml.
+deploy/acervatim-secrets.yaml
+deploy/acervatim.assembled.yaml
+
+# catalog-lego a son propre depot git (stack autonome, anterieure a la constellation).
+catalog-lego/

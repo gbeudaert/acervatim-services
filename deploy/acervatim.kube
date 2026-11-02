@@ -1,0 +1,86 @@
+# Quadlet Podman de la constellation micro-services Acervatim.
+#
+# Les neuf services applicatifs tournent dans **un seul pod**, decrit par `acervatim.yaml`.
+# MariaDB et Redis sont a cote, en unites `.container` distinctes : ils ont un cycle de vie
+# propre et ne doivent pas redemarrer a chaque livraison de code (cf. acervatim-db.container).
+#
+# ### Pourquoi un pod unique plutot que neuf
+#
+# Les neuf conteneurs partagent alors une pile reseau : ils se joignent en `localhost:31xx`,
+# sans DNS ni resolution de nom entre eux. Trois consequences, toutes voulues :
+#
+#   - **un seul port publie sur l'hote** (3100, le gateway). Les huit autres services ne sont
+#     joignables que depuis l'interieur du pod, ce qui applique par construction l'invariant du
+#     6 : « aucune route /internal/* n'est exposee vers l'exterieur » ;
+#   - **pas de DNS a faire fonctionner** entre neuf conteneurs pour un deploiement mono-hote ;
+#   - **une seule unite a redemarrer**, donc pas d'etat intermediaire ou la moitie de la
+#     constellation tourne dans une version et l'autre moitie dans la precedente.
+#
+# Le prix : les neuf services redemarrent ensemble. C'est acceptable ici parce qu'ils sont
+# livres ensemble ; ce ne le serait plus le jour ou l'un d'eux se deploie a son propre rythme -
+# il sortirait alors dans son propre pod, avec le reseau `acervatim-services` pour le joindre.
+#
+# ### Installation (rootless)
+#
+#   1. Construire les images :        ./deploy/build-images.ps1
+#   2. Preparer le dossier de deploiement :
+#        mkdir -p ~/acervatim/db-init
+#        cp deploy/../db/init/01-schemas.sql ~/acervatim/db-init/
+#        cp deploy/acervatim-secrets.example.yaml ~/acervatim/acervatim-secrets.yaml
+#        chmod 600 ~/acervatim/acervatim-secrets.yaml     # PUIS le remplir
+#   3. Assembler le manifeste joue (secrets + ConfigMap + Pod) :
+#        cat ~/acervatim/acervatim-secrets.yaml deploy/acervatim.yaml \
+#          > ~/acervatim/acervatim.yaml
+#        chmod 600 ~/acervatim/acervatim.yaml
+#   4. Installer les unites :
+#        cp deploy/*.network deploy/*.container deploy/*.kube ~/.config/containers/systemd/
+#        systemctl --user daemon-reload
+#   5. Demarrer :
+#        systemctl --user start acervatim-db acervatim-redis
+#        systemctl --user start acervatim
+#   6. Survie hors session SSH (sinon tout s'arrete a la deconnexion) :
+#        loginctl enable-linger $USER
+#
+# Le manifeste assemble vit dans `~/acervatim/` et non dans le depot : il porte les secrets.
+# Le regenerer (etape 3) apres toute modification de `deploy/acervatim.yaml`.
+#
+# ### Verification
+#
+#   systemctl --user status acervatim
+#   podman pod ps
+#   curl -s localhost:3100/health/ready | jq
+#
+# `/health/ready` du gateway sonde les huit autres services : c'est le seul appel a faire pour
+# savoir si la constellation est complete.
+
+[Unit]
+Description=Acervatim - constellation micro-services (pod applicatif)
+# La base et Redis doivent tourner AVANT : les migrations s'executent en initContainer et
+# echouent - donc empechent le pod de demarrer - si la base n'est pas la.
+# `Requires=` et non `Wants=` : un pod applicatif sans base n'a aucun mode degrade utile.
+Requires=acervatim-db.service acervatim-redis.service
+After=acervatim-db.service acervatim-redis.service
+After=network-online.target
+Wants=network-online.target
+
+[Kube]
+# Manifeste assemble (Secret + ConfigMap + Pod). Voir l'etape 3 ci-dessus.
+Yaml=%h/acervatim/acervatim.yaml
+# Reseau partage avec la base et Redis : c'est par lui que le pod resout `acervatim-db` et
+# `acervatim-services-redis`. Les neuf services, eux, se parlent en `localhost`.
+Network=acervatim-services.network
+# `--replace` implicite au demarrage : une relivraison remplace le pod au lieu d'echouer sur
+# un nom deja pris.
+KubeDownForce=true
+LogDriver=journald
+
+[Service]
+Restart=always
+# Genereux a dessein : les migrations des neuf schemas tournent en initContainer, avant que
+# le moindre service ne demarre, et une premiere migration sur une base vide prend du temps.
+TimeoutStartSec=300
+# Laisse aux neuf processus Node le temps de draîner leurs files BullMQ au SIGTERM.
+TimeoutStopSec=90
+
+[Install]
+WantedBy=default.target

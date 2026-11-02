@@ -1,0 +1,80 @@
+// Schema du gateway. Schema logique dedie (`acv_gateway`) sur l'instance MariaDB partagee :
+// AUCUNE relation ne franchit la frontiere du service (cf.
+// ../../../acervatim-docs/agent/backend/architecture-microservices.md, invariant central).
+//
+// Le gateway ne detient aucune donnee metier. Il detient un **index de routage**, et rien
+// d'autre : `GET /v1/items/:id`, `PATCH /v1/nodes/:id` et `GET /v1/collections/:id` ne
+// portent pas le type de collection, et un broadcast a tous les catalogs sur chaque lecture
+// est exclu. Ces deux tables sont donc la condition pour que le contrat V1 survive au
+// decoupage (3.3).
+//
+// Elles sont **entierement reconstructibles** par re-scan des catalogs : ce sont un cache
+// d'aiguillage, jamais une source de verite.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+/// Quelle collection appartient a qui, et de quel type elle est.
+/// Ecrite EN SYNCHRONE par le catalog a la creation et a la suppression, via
+/// `PUT|DELETE /internal/registry` - idempotent.
+model CollectionRegistry {
+  /// UUID de la collection, tel que le catalog l'a genere. Cle de routage principale.
+  collectionId String   @id @map("collection_id") @db.Char(36)
+  /// Proprietaire. Colonne nue, sans FK : `users` appartient a `identity`.
+  userId       String   @map("user_id") @db.Char(36)
+  /// `vinyl` | `manga` | `movie` | `book` | `game`. Designe le catalog cible.
+  typeCode     String   @map("type_code") @db.VarChar(32)
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  /// Sert le scatter-gather : savoir de quels catalogs interroger un utilisateur donne
+  /// evite d'appeler les trois quand il n'a que du manga.
+  @@index([userId, typeCode])
+  @@map("collection_registry")
+}
+
+/// A quelle collection appartient un item ou un noeud. Sans cette table, `GET /v1/items/:id`
+/// n'a aucun moyen de trouver son catalog : l'URL ne porte que l'id de l'item.
+model ResourceRegistry {
+  resourceId   String   @id @map("resource_id") @db.Char(36)
+  /// `item` | `node`. Non contraint par une enum Prisma : la valeur vient du catalog, et
+  /// une enum imposerait une migration coordonnee pour tout nouveau genre de ressource.
+  kind         String   @db.VarChar(16)
+  collectionId String   @map("collection_id") @db.Char(36)
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  /// Suppression en cascade applicative : quand une collection disparait, ses ressources
+  /// se purgent par cet index. La cascade SQL n'existe pas ici - la FK non plus.
+  @@index([collectionId])
+  @@map("resource_registry")
+}
+
+/// Trace d'une reconstruction du registre par re-scan des catalogs.
+///
+/// Le job de reparation est exige des la mise en service du registre, pas apres : un
+/// registre divergent produit des `404` sur des ressources qui existent, c'est-a-dire le
+/// symptome le plus difficile a diagnostiquer de toute la cible. Cette table rend la
+/// derniere reconstruction et son ecart observables sans lire les logs.
+model RegistryRebuildRun {
+  id           String    @id @default(uuid()) @db.Char(36)
+  startedAt    DateTime  @default(now()) @map("started_at")
+  finishedAt   DateTime? @map("finished_at")
+  state        String    @default("running") @db.VarChar(16)
+  /// Nombre de lignes vues cote catalogs pendant le scan.
+  scanned      Int       @default(0)
+  /// Lignes absentes du registre et ajoutees.
+  added        Int       @default(0)
+  /// Lignes du registre qui ne correspondaient plus a rien et ont ete retirees.
+  removed      Int       @default(0)
+  /// Lignes dont le `typeCode` ou le proprietaire avait change.
+  corrected    Int       @default(0)
+  lastError    String?   @map("last_error") @db.Text
+
+  @@index([startedAt])
+  @@map("registry_rebuild_runs")
+}

@@ -1,0 +1,34 @@
+# Image de developpement uniquement (hot reload via volume monte).
+# Node aligne sur le monolithe et sur catalog-lego.
+FROM node:24-slim
+
+WORKDIR /app
+
+# openssl : requis par le client Prisma sur les images slim
+# procps : fournit `ps`, utilise par `nest start --watch`
+RUN apt-get update && apt-get install -y --no-install-recommends openssl procps && rm -rf /var/lib/apt/lists/*
+
+# catalog-core : le CRUD collections / noeuds / items mutualise par les trois catalogs.
+#
+# Copie **dans** l'arborescence du service (`/app/catalog-core`), et non a cote : il est
+# compile comme une partie de ce programme, pas installe comme un paquet. Le placer ici rend
+# la racine de compilation deterministe (`/app`), donc la disposition de `dist/` aussi -
+# `dist/src/main.js` et `dist/catalog-core/src/*.js`, avec des `require` relatifs qui
+# resolvent sans alias ni magie au demarrage.
+#
+# C'est aussi la raison pour laquelle ces trois images se construisent depuis la racine du
+# depot et non depuis leur propre dossier.
+COPY catalog-core ./catalog-core
+
+COPY catalog-vinyl/package.json catalog-vinyl/package-lock.json* ./
+RUN npm install
+
+COPY catalog-vinyl/prisma ./prisma
+RUN npx prisma generate
+
+EXPOSE 3180
+
+# Migrations appliquees au demarrage : en dev la base est recreee souvent, et un service
+# qui demarre sur un schema absent echoue par des erreurs Prisma illisibles a la premiere
+# requete plutot qu'au boot.
+CMD ["sh", "-c", "npx prisma migrate deploy && npm run start:dev"]

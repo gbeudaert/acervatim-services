@@ -1,0 +1,42 @@
+# Redis de la constellation : backing store des files BullMQ de `search` (debit sortant borne
+# + single-flight) et du cache premium du gateway (TTL 60 s, cf. 3.6).
+#
+# Nom et volume distincts de ceux du monolithe (`acervatim-redis` / `acervatim-redis-data`),
+# pour que les deux stacks cohabitent pendant la bascule.
+#
+# ### Ce que perd un redemarrage
+#
+# Les jobs BullMQ sont **idempotents et rejouables** (rechauffeurs de cache, moissonnages) :
+# en perdre est un desagrement, pas une perte de donnees. Le cache premium se reconstruit en
+# une requete. La persistance AOF est donc un confort - on la garde parce qu'elle ne coute
+# rien, pas parce qu'on en depend.
+#
+# `noeviction` en revanche n'est pas negociable : evincer un job en cours sous pression
+# memoire le ferait disparaitre sans trace, et un moissonnage interrompu ne se signale pas.
+#
+# Installation (rootless) :
+#   cp acervatim-redis.container ~/.config/containers/systemd/
+#   systemctl --user daemon-reload && systemctl --user start acervatim-services-redis
+
+[Unit]
+Description=Acervatim Redis (files BullMQ + cache premium)
+After=network-online.target
+Wants=network-online.target
+
+[Container]
+Image=docker.io/library/redis:7-alpine
+ContainerName=acervatim-services-redis
+Network=acervatim-services.network
+Exec=redis-server --maxmemory-policy noeviction --appendonly yes
+# Pas de PublishPort : accessible uniquement depuis le reseau Podman.
+Volume=acervatim-services-redis-data:/data
+HealthCmd=redis-cli ping
+HealthInterval=10s
+HealthRetries=5
+
+[Service]
+Restart=always
+TimeoutStartSec=30
+
+[Install]
+WantedBy=default.target

@@ -1,0 +1,103 @@
+// Schema du service identity. Schema logique dedie (`acv_core`) sur l'instance MariaDB
+// partagee : AUCUNE relation ne franchit la frontiere du service (cf.
+// ../../../acervatim-docs/agent/backend/architecture-microservices.md, invariant central).
+//
+// Privacy by design, inchange depuis le monolithe : aucune donnee perso directe (pas
+// d'email, pas de nom). Le `sub` Google est hache HMAC-SHA-256 avec SUB_HASH_PEPPER, et le
+// resultat est l'unique pivot d'identite. Le `userId` interne est un UUID v4 opaque - c'est
+// lui, et lui seul, que les autres services voient.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+// ---------- Identite ----------
+
+/// Le compte. **Aucune relation sortante** : dans le monolithe, `User` cascadait vers
+/// collections, items, noeuds, credentials, abonnements, grants et partages. Toutes ces
+/// tables vivent desormais dans d'autres schemas, et `onDelete: Cascade` ne franchit pas
+/// une frontiere de schema. C'est `UserDeletionJob` qui remplace la cascade (3.4).
+model User {
+  id            String   @id @default(uuid()) @db.Char(36)
+  googleSubHash String   @unique @map("google_sub_hash") @db.Char(64)
+  createdAt     DateTime @default(now()) @map("created_at")
+  updatedAt     DateTime @updatedAt @map("updated_at")
+
+  @@map("users")
+}
+
+// ---------- Journal d'audit ----------
+
+/// Append-only. Aucune methode update/delete exposee par `AuditLogService`.
+/// `userId` est NULL si l'action n'est pas attribuable (avant identification), et n'a
+/// **jamais** eu de FK - volontairement : la ligne d'audit survit a la suppression du compte.
+model AuditLog {
+  id        String   @id @default(uuid()) @db.Char(36)
+  userId    String?  @map("user_id") @db.Char(36)
+  action    String   @db.VarChar(64)
+  target    String?  @db.VarChar(128)
+  metadata  Json?
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@index([userId, createdAt])
+  @@index([action, createdAt])
+  @@map("audit_logs")
+}
+
+// ---------- Types de collection ----------
+
+/// Table de constantes : `vinyl` | `manga` | `movie` | `book` | `game`.
+///
+/// Elle reste ici parce que c'est un referentiel transverse, mais **les catalogs n'y font
+/// plus de jointure** : dans le monolithe, `Collection.typeId` etait une FK vers cette
+/// table ; chaque catalog stocke desormais le `typeCode` en clair dans sa propre colonne.
+/// C'est ce qui supprime la seule FK qui aurait franchi un schema pour un simple libelle.
+model CollectionType {
+  id        String   @id @default(uuid()) @db.Char(36)
+  code      String   @unique @db.VarChar(32)
+  label     String   @db.VarChar(64)
+  createdAt DateTime @default(now()) @map("created_at")
+
+  @@map("collection_types")
+}
+
+// ---------- Saga de suppression RGPD ----------
+
+/// Un participant, une suppression, un etat (3.4 de architecture-microservices.md).
+///
+/// **C'est le point a risque juridique du chantier.** La cascade Prisma disparait entre
+/// schemas : `DELETE /v1/me` devient un fan-out vers N services, et une saga partiellement
+/// echouee laisse des donnees d'un compte supprime. Un retry en ligne ne suffit pas - si le
+/// processus meurt entre deux participants, plus personne ne reprend. D'ou cette table, et
+/// le job de reconciliation qui rejoue ce qui n'est pas termine.
+///
+/// La ligne **survit a la suppression de l'utilisateur** (aucune FK vers `users`) : sans
+/// cela, supprimer le compte effacerait la trace de ce qu'il reste a supprimer ailleurs.
+model UserDeletionJob {
+  id        String @id @default(uuid()) @db.Char(36)
+  userId    String @map("user_id") @db.Char(36)
+  /// Nom du service participant, tel qu'il est declare dans SAGA_PARTICIPANTS.
+  service   String @db.VarChar(64)
+  /// `pending` | `done` | `failed`. `failed` n'est pas terminal : le job de reconciliation
+  /// le rejoue, la route participante etant idempotente.
+  state     String @default("pending") @db.VarChar(16)
+  attempts  Int    @default(0)
+  lastError String? @map("last_error") @db.Text
+
+  createdAt DateTime  @default(now()) @map("created_at")
+  updatedAt DateTime  @updatedAt @map("updated_at")
+  /// Horodatage de reussite. Sa presence est la seule preuve que la donnee est partie.
+  completedAt DateTime? @map("completed_at")
+
+  /// Un participant n'est sollicite qu'une fois par suppression.
+  @@unique([userId, service])
+  /// Le job de reconciliation balaie par cet index : « tout ce qui n'est pas termine,
+  /// du plus ancien au plus recent ».
+  @@index([state, createdAt])
+  @@map("user_deletion_jobs")
+}

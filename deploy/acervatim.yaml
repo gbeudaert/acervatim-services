@@ -1,0 +1,330 @@
+# Manifeste Kubernetes de la constellation Acervatim, joue par `podman kube play` via le
+# Quadlet `acervatim.kube`.
+#
+# **Ce fichier ne contient aucun secret.** Il est assemble au deploiement avec
+# `acervatim-secrets.yaml` (non versionne) :
+#   cat ~/acervatim/acervatim-secrets.yaml deploy/acervatim.yaml > ~/acervatim/acervatim.yaml
+#
+# Les neuf services partagent une pile reseau (meme pod) : ils se joignent en `localhost`,
+# d'ou les `*_BASE_URL` ci-dessous. C'est la seule difference de configuration avec la stack de
+# developpement, ou docker-compose les separe et les fait se resoudre par nom de service.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: acervatim-config
+data:
+  NODE_ENV: production
+
+  # --- Adressage interne ----------------------------------------------------------------
+  # `localhost` parce que les neuf conteneurs sont dans le meme pod. Un service qui sortirait
+  # du pod deviendrait `http://<son-conteneur>:<port>` et rejoindrait le reseau
+  # `acervatim-services` - c'est la seule ligne a changer, de chaque cote.
+  IDENTITY_BASE_URL: http://localhost:3110
+  BILLING_BASE_URL: http://localhost:3120
+  CONNECTIONS_BASE_URL: http://localhost:3130
+  SHARING_BASE_URL: http://localhost:3140
+  SEARCH_BASE_URL: http://localhost:3150
+  CATALOG_GENERIC_BASE_URL: http://localhost:3160
+  CATALOG_MANGA_BASE_URL: http://localhost:3170
+  CATALOG_VINYL_BASE_URL: http://localhost:3180
+  GATEWAY_BASE_URL: http://localhost:3100
+
+  # Redis et MariaDB sont HORS du pod : resolus par le DNS Podman du reseau partage.
+  REDIS_HOST: acervatim-services-redis
+  REDIS_PORT: '6379'
+  DB_HOST: acervatim-db
+  DB_PORT: '3306'
+
+  # --- Saga RGPD (3.4) ------------------------------------------------------------------
+  # **La ligne a completer en meme temps qu'on ajoute un service qui stocke un `userId`.**
+  # Un participant absent d'ici ne recoit jamais de demande de suppression, et la saga
+  # reussit - silencieuse et incomplete.
+  SAGA_PARTICIPANTS: >-
+    billing=http://localhost:3120,connections=http://localhost:3130,sharing=http://localhost:3140,search=http://localhost:3150,catalog-generic=http://localhost:3160,catalog-manga=http://localhost:3170,catalog-vinyl=http://localhost:3180
+  SAGA_ALERT_AFTER_HOURS: '24'
+
+  # --- Reglages du gateway --------------------------------------------------------------
+  # Fenetre pendant laquelle une perte de premium n'est pas encore effective (3.6). Assumee :
+  # la perte de premium *suspend* les partages, elle ne detruit rien - et un GAIN est propage
+  # immediatement par `billing`, qui invalide ce cache.
+  PREMIUM_CACHE_TTL: '60'
+  INTERNAL_PRINCIPAL_TTL: '120'
+  PROXY_TIMEOUT_MS: '30000'
+  # Vide : l'app Android n'a pas besoin de CORS, et aucun navigateur n'appelle cette API.
+  CORS_ORIGINS: ''
+
+  # --- Sources externes -----------------------------------------------------------------
+  BNF_SRU_BASE_URL: https://catalogue.bnf.fr/api/SRU
+  HTTP_USER_AGENT: Acervatim-Backend/1.0 (+contact@acervatim.local)
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: acervatim
+  labels:
+    app: acervatim
+spec:
+  restartPolicy: Always
+
+  # Les migrations des neuf schemas, AVANT que le moindre service ne demarre. Une image
+  # unique les joue en sequence (cf. deploy/migrate.sh) ; son echec empeche le pod de
+  # demarrer, ce qui est preferable a neuf services tournant sur un schema a moitie migre.
+  initContainers:
+    - name: migrate
+      image: localhost/acervatim-migrate:0.1.0
+      envFrom:
+        - configMapRef:
+            name: acervatim-config
+        - secretRef:
+            name: acervatim-secrets
+      resources:
+        requests:
+          memory: 128Mi
+        limits:
+          memory: 512Mi
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ['ALL']
+
+  containers:
+    # ------------------------------------------------------------------ point d'entree
+    - name: gateway
+      image: localhost/acervatim-gateway:0.1.0
+      # **Le seul port publie sur l'hote.** Les huit autres services ne sont joignables que
+      # depuis l'interieur du pod : c'est ce qui applique par construction l'invariant du 6 -
+      # aucune route `/internal/*` n'est exposee vers l'exterieur.
+      ports:
+        - containerPort: 3100
+          hostPort: 3100
+          protocol: TCP
+      env:
+        - name: PORT
+          value: '3100'
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: acervatim-secrets
+              key: DATABASE_URL_GATEWAY
+      envFrom:
+        - configMapRef:
+            name: acervatim-config
+        - secretRef:
+            name: acervatim-secrets
+      resources:
+        requests:
+          memory: 160Mi
+        limits:
+          memory: 256Mi
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ['ALL']
+
+    # ------------------------------------------------------------------ transverses
+    - name: identity
+      image: localhost/acervatim-identity:0.1.0
+      env:
+        - name: PORT
+          value: '3110'
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: acervatim-secrets
+              key: DATABASE_URL_IDENTITY
+      envFrom:
+        - configMapRef:
+            name: acervatim-config
+        - secretRef:
+            name: acervatim-secrets
+      resources:
+        requests:
+          memory: 160Mi
+        limits:
+          memory: 256Mi
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ['ALL']
+
+    - name: billing
+      image: localhost/acervatim-billing:0.1.0
+      env:
+        - name: PORT
+          value: '3120'
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: acervatim-secrets
+              key: DATABASE_URL_BILLING
+      envFrom:
+        - configMapRef:
+            name: acervatim-config
+        - secretRef:
+            name: acervatim-secrets
+      resources:
+        requests:
+          # Plus haut que ses voisins : le SDK Google (`googleapis` + `google-auth-library`)
+          # est la dependance la plus lourde de la constellation.
+          memory: 192Mi
+        limits:
+          memory: 320Mi
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ['ALL']
+
+    - name: connections
+      image: localhost/acervatim-connections:0.1.0
+      env:
+        - name: PORT
+          value: '3130'
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: acervatim-secrets
+              key: DATABASE_URL_CONNECTIONS
+      envFrom:
+        - configMapRef:
+            name: acervatim-config
+        - secretRef:
+            name: acervatim-secrets
+      resources:
+        requests:
+          memory: 160Mi
+        limits:
+          memory: 256Mi
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ['ALL']
+
+    - name: sharing
+      image: localhost/acervatim-sharing:0.1.0
+      env:
+        - name: PORT
+          value: '3140'
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: acervatim-secrets
+              key: DATABASE_URL_SHARING
+      envFrom:
+        - configMapRef:
+            name: acervatim-config
+        - secretRef:
+            name: acervatim-secrets
+      resources:
+        requests:
+          memory: 144Mi
+        limits:
+          memory: 224Mi
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ['ALL']
+
+    - name: search
+      image: localhost/acervatim-search:0.1.0
+      env:
+        - name: PORT
+          value: '3150'
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: acervatim-secrets
+              key: DATABASE_URL_SEARCH
+      envFrom:
+        - configMapRef:
+            name: acervatim-config
+        - secretRef:
+            name: acervatim-secrets
+      resources:
+        requests:
+          # Le plus gourmand, et de loin : six files BullMQ avec leurs workers, le parseur
+          # UNIMARC de la BnF, et les six adapters de source. C'est aussi le seul service dont
+          # la consommation depend du trafic sortant plutot que du trafic entrant.
+          memory: 288Mi
+        limits:
+          memory: 512Mi
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ['ALL']
+
+    # ------------------------------------------------------------------ catalogs par type
+    - name: catalog-generic
+      image: localhost/acervatim-catalog-generic:0.1.0
+      env:
+        - name: PORT
+          value: '3160'
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: acervatim-secrets
+              key: DATABASE_URL_CATALOG_GENERIC
+      envFrom:
+        - configMapRef:
+            name: acervatim-config
+        - secretRef:
+            name: acervatim-secrets
+      resources:
+        requests:
+          memory: 160Mi
+        limits:
+          memory: 256Mi
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ['ALL']
+
+    - name: catalog-manga
+      image: localhost/acervatim-catalog-manga:0.1.0
+      env:
+        - name: PORT
+          value: '3170'
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: acervatim-secrets
+              key: DATABASE_URL_CATALOG_MANGA
+      envFrom:
+        - configMapRef:
+            name: acervatim-config
+        - secretRef:
+            name: acervatim-secrets
+      resources:
+        requests:
+          memory: 160Mi
+        limits:
+          memory: 256Mi
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ['ALL']
+
+    - name: catalog-vinyl
+      image: localhost/acervatim-catalog-vinyl:0.1.0
+      env:
+        - name: PORT
+          value: '3180'
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: acervatim-secrets
+              key: DATABASE_URL_CATALOG_VINYL
+      envFrom:
+        - configMapRef:
+            name: acervatim-config
+        - secretRef:
+            name: acervatim-secrets
+      resources:
+        requests:
+          memory: 160Mi
+        limits:
+          memory: 256Mi
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ['ALL']

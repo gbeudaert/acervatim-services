@@ -1,0 +1,64 @@
+// Schema du service connections. Schema logique dedie (`acv_conn`) sur l'instance MariaDB
+// partagee : AUCUNE relation ne franchit la frontiere du service (cf.
+// ../../../acervatim-docs/agent/backend/architecture-microservices.md, invariant central).
+//
+// C'est le seul service qui detienne des secrets appartenant a un utilisateur. `userId` reste
+// une colonne nue, sans FK vers `users` : cette table appartient a `identity`.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+/// Jetons d'acces a une source externe, chiffres AES-256-GCM.
+///
+/// Une seule table pour deux mecanismes que rien n'oblige a distinguer en base :
+///  - **OAuth** (Discogs en 1.0a, MAL en 2.0 PKCE) : `accessTokenEncrypted` porte le jeton,
+///    `refreshTokenEncrypted` le refresh - ou, pour OAuth 1.0a qui n'a pas de refresh, le
+///    **token secret**. Ce detournement vient du monolithe ; il est documente ici parce que
+///    lire « refresh » sur un flux qui n'en a pas est autrement incomprehensible.
+///  - **BYOT** (TMDB, et toute source a cle personnelle) : `accessTokenEncrypted` porte la
+///    cle, `expiresAt` vaut 0.
+///
+/// Le decoupage n'y change rien, sinon que la lecture passe maintenant par
+/// `GET /internal/token/:userId/:provider` au lieu d'un appel en memoire.
+model OauthCredential {
+  userId                  String   @map("user_id") @db.Char(36)
+  /// `discogs` | `mal` | `tmdb` | ... Non contraint par une enum : ajouter une source ne
+  /// doit pas exiger une migration coordonnee entre `connections` et `search`.
+  provider                String   @db.VarChar(32)
+  accessTokenEncrypted    String   @map("access_token_encrypted") @db.Text
+  refreshTokenEncrypted   String?  @map("refresh_token_encrypted") @db.Text
+  /// epoch ms ; 0 = jamais (OAuth 1.0a et cles personnelles).
+  expiresAt               BigInt   @default(0) @map("expires_at")
+  scopes                  Json     @default("[]")
+  /// Version de la cle de chiffrement. Sert a une rotation progressive : sans elle, changer
+  /// `ENCRYPTION_KEY` rendrait tous les jetons illisibles d'un coup.
+  encryptedWithKeyVersion Int      @default(1) @map("encrypted_with_key_version")
+  updatedAt               DateTime @updatedAt @map("updated_at")
+
+  @@id([userId, provider])
+  @@map("oauth_credentials")
+}
+
+/// Cache generique, ici pour une seule raison : porter les **flux OAuth en attente**.
+///
+/// Entre `GET /oauth/:provider/start` et le callback, il faut retenir qui a commence le flux
+/// et avec quel secret (token secret OAuth 1.0a, `code_verifier` PKCE). Le callback n'est pas
+/// authentifie - le navigateur qui revient du provider ne porte aucun JWT - donc c'est cette
+/// ligne, et elle seule, qui retablit l'identite.
+///
+/// TTL court (10 minutes) : un flux abandonne ne doit pas laisser un secret exploitable.
+model ApiCache {
+  cacheKey  String   @id @map("cache_key") @db.VarChar(255)
+  payload   Json
+  fetchedAt DateTime @default(now()) @map("fetched_at")
+  expiresAt DateTime @map("expires_at")
+
+  @@index([expiresAt])
+  @@map("api_cache")
+}

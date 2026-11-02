@@ -1,0 +1,115 @@
+// Schema du service sharing. Schema logique dedie (`acv_sharing`) sur l'instance MariaDB
+// partagee : AUCUNE relation ne franchit la frontiere du service (cf.
+// ../../../acervatim-docs/agent/backend/architecture-microservices.md, invariant central).
+//
+// C'est ici que la couture la plus dure du decoupage se voit (3.1) : dans le monolithe,
+// `CollectionShareEntry` avait une FK vers `Collection`, et `ShareFilterService` joignait en
+// SQL brut `collection_share_entries` a `items`. La dependance etait **bidirectionnelle** -
+// `sharing` lisait `items`, `items` appelait `sharing` - et elle ne survit pas a la
+// separation des schemas.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+/// Un partage : UN code, N collections, chacune avec son propre jeu de statuts.
+///
+/// Le partage n'appartient pas a une collection mais a un **utilisateur** - c'est ce qui a
+/// permis, deja dans le monolithe, qu'un meme code expose plusieurs collections.
+///
+/// Le code voyage hors-bande : les comptes sont anonymes, il n'y a aucun email en base pour
+/// « inviter » qui que ce soit. Seul HMAC-SHA-256(code, SHARE_CODE_PEPPER) est stocke, et le
+/// code en clair n'est rendu qu'a la creation.
+model CollectionShare {
+  id          String    @id @default(uuid()) @db.Char(36)
+  /// Colonne nue, sans FK : `users` appartient a `identity`.
+  ownerUserId String    @map("owner_user_id") @db.Char(36)
+  codeHash    String    @unique @map("code_hash") @db.Char(64)
+  /// Libelle libre du PROPRIETAIRE. Aide-memoire prive : ne sort jamais vers les membres,
+  /// n'est ni journalise ni mis en metadonnee d'audit.
+  label       String?   @db.VarChar(200)
+  maxUses     Int       @default(1) @map("max_uses")
+  usedCount   Int       @default(0) @map("used_count")
+  /// epoch ms ; null = jamais. Borne l'usage du CODE, pas l'adhesion deja acquise.
+  expiresAt   BigInt?   @map("expires_at")
+  /// Revocation = marquage, jamais de suppression physique : la trace de ce qui a ete
+  /// partage doit survivre a la revocation.
+  revokedAt   DateTime? @map("revoked_at")
+  createdAt   DateTime  @default(now()) @map("created_at")
+
+  entries CollectionShareEntry[]
+  members CollectionShareMember[]
+
+  @@index([ownerUserId])
+  @@map("collection_shares")
+}
+
+/// Ce qu'un partage expose d'UNE collection.
+///
+/// ### Les deux colonnes denormalisees, et pourquoi elles existent
+///
+/// `collectionName` et `typeCode` etaient obtenus par jointure dans le monolithe
+/// (`entry.collection.name`, `entry.collection.type.code`). La FK ayant disparu avec le
+/// decoupage, il y a trois options et une seule tenable :
+///
+///  1. interroger le catalog a chaque lecture de partage - une requete reseau par entree et
+///     par partage, sur une liste non plafonnee : c'est exactement le cout que le monolithe
+///     refusait deja pour l'`itemCount` du proprietaire ;
+///  2. ne plus rendre le nom - un ecran de gestion qui liste des UUID ;
+///  3. denormaliser a la creation.
+///
+/// La 3 est retenue. Son defaut est reel et assume : **le nom peut vieillir** si le
+/// proprietaire renomme sa collection apres avoir cree le partage. Il est rattrape la ou
+/// c'est gratuit - la reponse de `POST /internal/items/count`, que le membre declenche deja,
+/// porte le nom courant et realigne la ligne. L'ecran du proprietaire, lui, ne fait aucun
+/// appel au catalog et peut donc afficher un nom perime jusqu'a la prochaine lecture par un
+/// membre.
+///
+/// `typeCode` n'est pas denormalise pour l'affichage mais pour le **routage** : sans lui,
+/// `sharing` ne saurait pas a quel catalog demander les comptes, et devrait les diffuser aux
+/// trois.
+model CollectionShareEntry {
+  shareId        String @map("share_id") @db.Char(36)
+  /// Colonne nue, sans FK : `collections` appartient a un `catalog-*`.
+  collectionId   String @map("collection_id") @db.Char(36)
+  /// Tableau JSON de statuts (`['OWNED','WISHLIST']`), non vide.
+  statuses       Json
+  /// Nom de la collection au moment du partage. Voir le JSDoc ci-dessus.
+  collectionName String @map("collection_name") @db.VarChar(255)
+  /// `vinyl` | `manga` | `movie` | `book` | `game`. Sert au routage vers le bon catalog.
+  typeCode       String @map("type_code") @db.VarChar(32)
+
+  share CollectionShare @relation(fields: [shareId], references: [id], onDelete: Cascade)
+
+  @@id([shareId, collectionId])
+  /// « qui me partage cette collection »
+  @@index([collectionId])
+  /// Regroupement par catalog avant l'appel de comptage : un appel par type, en parallele.
+  @@index([typeCode])
+  @@map("collection_share_entries")
+}
+
+/// Un membre ayant consomme le code. On ne rejoint qu'une fois, d'ou la cle composite.
+model CollectionShareMember {
+  shareId      String    @map("share_id") @db.Char(36)
+  memberUserId String    @map("member_user_id") @db.Char(36)
+  /// Libelle libre du MEMBRE. Symetrique de `CollectionShare.label`, et tout aussi prive :
+  /// le proprietaire ne le voit pas. Un partage a plusieurs membres ne doit pas reveler a
+  /// l'un comment le proprietaire a nomme l'autre.
+  label        String?   @db.VarChar(200)
+  redeemedAt   DateTime  @default(now()) @map("redeemed_at")
+  /// Ejecter un membre sans revoquer tout le partage.
+  revokedAt    DateTime? @map("revoked_at")
+
+  share CollectionShare @relation(fields: [shareId], references: [id], onDelete: Cascade)
+
+  @@id([shareId, memberUserId])
+  /// « collections partagees avec moi »
+  @@index([memberUserId])
+  @@map("collection_share_members")
+}

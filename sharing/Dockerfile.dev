@@ -1,0 +1,22 @@
+# Image de developpement uniquement (hot reload via volume monte).
+# Node aligne sur le monolithe et sur catalog-lego.
+FROM node:24-slim
+
+WORKDIR /app
+
+# openssl : requis par le client Prisma sur les images slim
+# procps : fournit `ps`, utilise par `nest start --watch`
+RUN apt-get update && apt-get install -y --no-install-recommends openssl procps && rm -rf /var/lib/apt/lists/*
+
+COPY package.json package-lock.json* ./
+RUN npm install
+
+COPY prisma ./prisma
+RUN npx prisma generate
+
+EXPOSE 3140
+
+# Migrations appliquees au demarrage : en dev la base est recreee souvent, et un service
+# qui demarre sur un schema absent echoue par des erreurs Prisma illisibles a la premiere
+# requete plutot qu'au boot.
+CMD ["sh", "-c", "npx prisma migrate deploy && npm run start:dev"]
