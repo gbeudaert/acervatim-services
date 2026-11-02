@@ -1,5 +1,5 @@
 import { allowedMethods, matchRoute, pathExists } from './route-matcher';
-import { ROUTE_TABLE } from './route-table';
+import { forwardsAuthorization, ROUTE_TABLE } from './route-table';
 
 describe('matchRoute', () => {
   it('route une collection vers le catalog par reference', () => {
@@ -105,11 +105,28 @@ describe('ROUTE_TABLE', () => {
   });
 
   // `Authorization` porte le JWT de l'utilisateur : le retransmettre permettrait a un
-  // service de le rejouer ailleurs. La seule exception legitime est le webhook RTDN, dont
+  // service de le rejouer ailleurs. La seule route a le declarer est le webhook RTDN, dont
   // le jeton est signe par Google et que seul `billing` peut verifier.
-  it('ne retransmet Authorization que pour le webhook RTDN', () => {
+  it('ne declare la retransmission d Authorization que pour le webhook RTDN', () => {
     const forwarding = ROUTE_TABLE.filter((r) => r.forwardAuthorization);
     expect(forwarding.map((r) => r.pattern)).toEqual([
+      '/webhooks/google-play/rtdn',
+    ]);
+  });
+
+  // Les routes admin portent `ADMIN_API_TOKEN`, pas un JWT : le service doit le recevoir
+  // pour le reverifier, sinon il repond 401 a un appel que le gateway a deja accepte.
+  it('retransmet Authorization pour toute route admin, jamais pour une route utilisateur', () => {
+    const admin = ROUTE_TABLE.filter((r) => r.auth === 'admin');
+    expect(admin.length).toBeGreaterThan(0);
+    for (const rule of admin) expect(forwardsAuthorization(rule)).toBe(true);
+    for (const rule of ROUTE_TABLE.filter((r) => r.auth === 'user')) {
+      expect(forwardsAuthorization(rule)).toBe(false);
+    }
+    const publicForwarding = ROUTE_TABLE.filter(
+      (r) => r.auth === 'public' && forwardsAuthorization(r),
+    );
+    expect(publicForwarding.map((r) => r.pattern)).toEqual([
       '/webhooks/google-play/rtdn',
     ]);
   });

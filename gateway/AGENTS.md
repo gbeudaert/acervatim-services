@@ -11,8 +11,10 @@ metier. Cible : `../../../acervatim-docs/agent/backend/architecture-microservice
   `POST /v1/collections`, sans lequel il n'y a aucun catalog vers qui router.
 - **Le corps des reponses est relaye tel quel**, Problem Details compris. L'app discrimine sur
   les URI `type` du monolithe : les reemballer casserait le contrat sans changer une signature.
-- **`Authorization` n'est jamais retransmis** vers l'aval. L'identite passe par
-  `X-Acervatim-Principal`, et par lui seul.
+- **`Authorization` n'est jamais retransmis** vers l'aval, sauf deux exceptions decidees par
+  `forwardsAuthorization` (`route-table.ts`) : le webhook RTDN (JWT signe par Google) et les
+  routes `auth: 'admin'` (`ADMIN_API_TOKEN`, deja detenu par chaque service, qui le reverifie).
+  L'identite d'un utilisateur passe par `X-Acervatim-Principal`, et par lui seul.
 - **Aucune route `/internal/*` n'est exposee** par la table de routage. Un test le verifie.
 - Ne nommer aucun materiel ni hebergeur (Raspberry Pi, NAS, AWS...) dans le code ou un
   commentaire.

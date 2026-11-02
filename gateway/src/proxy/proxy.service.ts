@@ -13,7 +13,9 @@ import { PRINCIPAL_HEADER } from '../common/guards/principal.types';
  * En-tetes que le gateway retransmet vers l'aval. Liste **blanche** : tout le reste est
  * supprime. En particulier `Authorization`, qui porte le JWT de l'utilisateur - le
  * transmettre ferait que chaque service pourrait le re-verifier, ou pire, s'en servir
- * ailleurs. L'identite passe par le principal signe, et par lui seul (3.6).
+ * ailleurs. L'identite passe par le principal signe, et par lui seul (3.6). Deux exceptions,
+ * decidees par la table de routage : le webhook RTDN et les routes admin
+ * (`forwardsAuthorization`).
  */
 const FORWARD_REQUEST_HEADERS = ['content-type', 'accept', 'accept-language'];
 

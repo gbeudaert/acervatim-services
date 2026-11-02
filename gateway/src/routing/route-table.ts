@@ -67,12 +67,33 @@ export interface RouteRule {
    * JWT de l'utilisateur, l'identite passe par le principal signe, et retransmettre le jeton
    * permettrait a chaque service de le rejouer ailleurs.
    *
-   * L'unique exception est le webhook RTDN : Google y joint un JWT OIDC **qu'il signe
+   * Seule route a le declarer : le webhook RTDN. Google y joint un JWT OIDC **qu'il signe
    * lui-meme** et que `billing` doit verifier. Ce n'est pas un jeton Acervatim, le gateway
    * n'a aucun moyen de le valider, et le supprimer rendrait le webhook inauthentifiable -
    * donc refuse par `billing`, donc retente en boucle par Pub/Sub.
+   *
+   * Les routes `auth: 'admin'` retransmettent aussi, sans le declarer : voir
+   * {@link forwardsAuthorization}.
    */
   forwardAuthorization?: boolean;
+}
+
+/**
+ * Retransmettre `Authorization` vers l'aval pour cette regle ? Deux cas, et deux seulement.
+ *
+ * - La regle le declare (`forwardAuthorization`) : le webhook RTDN.
+ * - La route est `auth: 'admin'`. L'en-tete n'y porte pas un JWT d'utilisateur mais
+ *   `ADMIN_API_TOKEN`, que le gateway vient de verifier et que chaque service detient deja :
+ *   aucun service n'apprend un secret qu'il ne connait pas. Le service le reverifie avec son
+ *   propre `AdminGuard`, indispensable puisque son port reste joignable sans passer par ici.
+ *   Sans cette retransmission, toute route admin repondait `401` a travers le gateway - le
+ *   jeton etait verifie ici, puis retire avant d'atteindre le service.
+ *
+ * Decide par le **type** d'authentification et non route par route : une route admin ajoutee
+ * a la table fonctionne sans qu'on ait a se souvenir de cette exception.
+ */
+export function forwardsAuthorization(rule: RouteRule): boolean {
+  return rule.auth === 'admin' || rule.forwardAuthorization === true;
 }
 
 const svc = (service: ServiceName): RouteTarget => ({

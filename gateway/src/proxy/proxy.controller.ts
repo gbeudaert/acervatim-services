@@ -15,6 +15,7 @@ import { AdminGuard } from '../common/guards/admin.guard';
 import { PrincipalService } from '../principal/principal.service';
 import { RegistryService } from '../registry/registry.service';
 import { allowedMethods, matchRoute, pathExists } from '../routing/route-matcher';
+import { forwardsAuthorization } from '../routing/route-table';
 import { ServiceRegistryService } from '../routing/service-registry.service';
 import { ProxyService } from './proxy.service';
 import { RouteThrottleService } from './route-throttle.service';
@@ -115,7 +116,7 @@ export class ProxyController {
           res,
           resolvedRequest.principalHeader,
           undefined,
-          { forwardAuthorization: match.rule.forwardAuthorization },
+          { forwardAuthorization: forwardsAuthorization(match.rule) },
         );
         return;
 
