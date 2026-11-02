@@ -34,6 +34,9 @@ Recherche externe, pivot manga, files BullMQ et cache d'API (NestJS, Prisma, Mar
   (resolution.source)` des adapters n'ont pas bouge.
 - `src/sources/{bnf,googlebooks,mangadex}/` : les sources sans OAuth, inchangees.
 - `src/search/import/` : import d'edition asynchrone (fire-and-poll).
+- `src/search/watch/` : rattrapage hebdomadaire des tomes manga et `GET /v1/series-updates`. Les
+  series viennent de `catalog-manga`, le premium de `billing`, par leurs routes `/internal/*`
+  (`catalog-client.service.ts`, `premium-client.service.ts`) - jamais par une lecture de base.
 - `src/metrics/` : `/v1/admin/queues`. Toutes les files du systeme ayant suivi ce service,
   c'est ici et nulle part ailleurs que la passerelle sortante s'observe.
 - `src/common/internal/contracts.ts` : contrat des routes `/internal/*`. **Identique dans tous

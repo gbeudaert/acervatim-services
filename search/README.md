@@ -3,7 +3,8 @@
 Recherche externe, pivot manga, files BullMQ et cache d'API.
 
 - **Perimetre** : `/v1/search*`, adapters Discogs / MAL / TMDB / BnF / Google Books / MangaDex,
-  import d'edition asynchrone, `/v1/admin/queues`.
+  import d'edition asynchrone, rattrapage des tomes manga (`/v1/series-updates`),
+  `/v1/admin/queues`.
 - **Schema SQL** : `acv_search` · **Port** : 3150
 - **Cible et decoupage** : `../../../acervatim-docs/agent/backend/architecture-microservices.md`
 - **Sources externes** : `../../../acervatim-docs/agent/transverse/sources-externes.md`
@@ -106,7 +107,38 @@ les seuls a faire la difference.
 
 ---
 
-## 6. Demarrage
+## 6. Recherche manga par titre et rattrapage des tomes
+
+Reprise du chantier `feat/manga-recherche-serie` du monolithe (SD1 a SD3) :
+
+- `GET /v1/search?type=manga` est servi par **MangaDex** (tri par suivis, doujinshi et
+  anthologies exclus), sans jeton. MAL n'est plus qu'un repli, sur la premiere page seulement et
+  sous jeton.
+- `GET /v1/search/editions?mangaId=&title=` projette les notices BnF en editions, identifiees par
+  l'**editeur normalise et la mention 205**. `edition-mapping` et l'import d'edition prennent
+  `publisher` (et `since` pour `edition-mapping`).
+- Un **passage hebdomadaire** (file `edition-watch`, lundi 4 h, planificateur BullMQ, concurrence
+  globale 1) cherche les tomes parus depuis la derniere verification. `GET /v1/series-updates`
+  (premium) les propose a l'app ; `POST /v1/admin/edition-watch/run` force un passage.
+
+**C'est le premier code de ce service qui lit des donnees d'utilisateur, et il ne les lit pas en
+base.** Les series et les volumes deja presents viennent de `catalog-manga`
+(`GET /internal/nodes`, `GET /internal/users/:id/nodes`), le premium du proprietaire de
+`billing` (`GET /internal/premium/:id`). Ce qui reste ici - l'etat par edition, cle
+`edition-watch:v1:<hash>` dans `api_cache` - est indexe par **edition**, jamais par compte : le 3
+tient toujours, une suppression de compte n'a rien a effacer ici.
+
+Deux consequences de fonctionnement :
+
+- `CATALOG_MANGA_BASE_URL` ou `BILLING_BASE_URL` absent : le passage ne surveille rien (journal
+  `edition-watch: ... aucune edition surveillee`) et `GET /v1/series-updates` repond `503`.
+- `catalog-manga` ou `billing` injoignable fait **echouer** le passage (job en echec, visible dans
+  `/v1/admin/queues`) et `series-updates` repond `502`. Jamais une liste vide, qui dirait a
+  l'app « rien de nouveau ».
+
+---
+
+## 7. Demarrage
 
 ```powershell
 cd ..                              # backend-services/
@@ -122,7 +154,7 @@ famille de cles.
 
 ---
 
-## 7. Reste a faire
+## 8. Reste a faire
 
 - **Mesurer le surcout de la resolution de jeton.** Elle etait en memoire, elle est devenue un
   appel reseau **par requete de recherche** - le seul de ce service sur le chemin chaud. Un

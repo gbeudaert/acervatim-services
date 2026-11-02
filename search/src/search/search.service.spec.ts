@@ -1,0 +1,433 @@
+import {
+  BadGatewayException,
+  BadRequestException,
+  NotFoundException,
+} from '@nestjs/common';
+import { CollectionTypeCode } from '../common/internal/contracts';
+import { BnfService } from '../sources/bnf/bnf.service';
+import { GoogleBooksCoverService } from '../sources/googlebooks/googlebooks.service';
+import { MangaDexCoverService } from '../sources/mangadex/mangadex.service';
+import {
+  AdapterSearchResult,
+  SourceAdapter,
+  UnifiedItem,
+} from '../sources/adapters/types';
+import { SearchService } from './search.service';
+
+const bnfMock = { enumerateEdition: jest.fn(), listEditions: jest.fn() };
+const bnf = bnfMock as unknown as BnfService;
+
+const gbooksMock = {
+  cachedCover: jest.fn(),
+  cachedCoverAndDescription: jest.fn(),
+  resolveCover: jest.fn(),
+  resolveCoverAndDescription: jest.fn(),
+};
+const gbooks = gbooksMock as unknown as GoogleBooksCoverService;
+
+const mangadexMock = {
+  cachedSeriesCovers: jest.fn(),
+  resolveSeriesCovers: jest.fn(),
+  fetchSeries: jest.fn(),
+};
+const mangadex = mangadexMock as unknown as MangaDexCoverService;
+
+beforeEach(() => {
+  jest.clearAllMocks();
+  gbooksMock.resolveCover.mockResolvedValue(null);
+  gbooksMock.resolveCoverAndDescription.mockResolvedValue({
+    coverUrl: null,
+    description: null,
+    status: 'absent',
+  });
+  gbooksMock.cachedCoverAndDescription.mockResolvedValue({
+    coverUrl: null,
+    description: null,
+    status: 'unresolved',
+  });
+  // Par défaut MangaDex ne trouve rien → la résolution retombe sur Google Books (comportement testé).
+  mangadexMock.cachedSeriesCovers.mockResolvedValue({
+    mangaId: null,
+    volumes: {},
+    status: 'unresolved',
+  });
+  mangadexMock.resolveSeriesCovers.mockResolvedValue({
+    mangaId: null,
+    volumes: {},
+    status: 'absent',
+  });
+});
+
+function makeService(adapters: SourceAdapter[]): SearchService {
+  return new SearchService(adapters, bnf, gbooks, mangadex);
+}
+
+function makeAdapter(
+  mediaType: CollectionTypeCode,
+  result: AdapterSearchResult,
+): SourceAdapter {
+  return {
+    source: 'discogs' as const,
+    mediaType,
+    search: jest.fn().mockResolvedValue(result),
+    fetchDetails: jest.fn(),
+  } as unknown as SourceAdapter;
+}
+
+const USER = 'aaaaaaaa-aaaa-4aaa-aaaa-aaaaaaaaaaaa';
+
+const VINYL_ITEM: UnifiedItem = {
+  source: 'discogs',
+  sourceId: '1',
+  mediaType: 'vinyl',
+  title: 'Album',
+  creators: ['Artist'],
+  rawData: {},
+};
+
+describe('SearchService', () => {
+  it("route vers l'adapter correspondant au type", async () => {
+    const vinylAdapter = makeAdapter('vinyl', {
+      items: [VINYL_ITEM],
+      nextCursor: null,
+    });
+    const mangaAdapter = makeAdapter('manga', {
+      items: [],
+      nextCursor: null,
+    });
+    const svc = makeService([vinylAdapter, mangaAdapter]);
+
+    const res = await svc.search(USER, 'vinyl', { q: 'miles' }, undefined, 50);
+
+    expect(vinylAdapter.search).toHaveBeenCalledWith('miles', {
+      userId: USER,
+      cursor: undefined,
+      limit: 50,
+    });
+    expect(mangaAdapter.search).not.toHaveBeenCalled();
+    expect(res.data).toEqual([VINYL_ITEM]);
+  });
+
+  it('wrappe la réponse en CursorPage avec nextCursor + limit dans meta.pagination', async () => {
+    const adapter = makeAdapter('vinyl', {
+      items: [VINYL_ITEM],
+      nextCursor: '2',
+    });
+    const svc = makeService([adapter]);
+    const res = await svc.search(USER, 'vinyl', { q: 'q' }, '1', 25);
+    expect(res).toEqual({
+      data: [VINYL_ITEM],
+      meta: { pagination: { nextCursor: '2', limit: 25 } },
+    });
+  });
+
+  it('propage le cursor au call adapter', async () => {
+    const adapter = makeAdapter('vinyl', { items: [], nextCursor: null });
+    const svc = makeService([adapter]);
+    await svc.search(USER, 'vinyl', { q: 'q' }, 'cursor-from-client', 10);
+    expect(adapter.search).toHaveBeenCalledWith('q', {
+      userId: USER,
+      cursor: 'cursor-from-client',
+      limit: 10,
+    });
+  });
+
+  it("throw BadRequest si aucun adapter n'est enregistré pour ce type (ex: book)", async () => {
+    const vinyl = makeAdapter('vinyl', { items: [], nextCursor: null });
+    const svc = makeService([vinyl]);
+    await expect(
+      svc.search(USER, 'book', { q: 'q' }, undefined, 10),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('route vers searchByBarcode quand un barcode est fourni', async () => {
+    const adapter = makeAdapter('vinyl', {
+      items: [VINYL_ITEM],
+      nextCursor: null,
+    });
+    const barcodeMock = jest
+      .fn()
+      .mockResolvedValue({ items: [VINYL_ITEM], nextCursor: null });
+    (adapter as unknown as { searchByBarcode: jest.Mock }).searchByBarcode =
+      barcodeMock;
+    const svc = makeService([adapter]);
+
+    const res = await svc.search(
+      USER,
+      'vinyl',
+      { barcode: '0888072024557' },
+      undefined,
+      50,
+    );
+
+    expect(barcodeMock).toHaveBeenCalledWith('0888072024557', {
+      userId: USER,
+      cursor: undefined,
+      limit: 50,
+    });
+    expect(adapter.search).not.toHaveBeenCalled();
+    expect(res.data).toEqual([VINYL_ITEM]);
+  });
+
+  it('throw BadRequest si barcode fourni mais adapter sans searchByBarcode', async () => {
+    const adapter = makeAdapter('vinyl', { items: [], nextCursor: null });
+    // makeAdapter ne définit pas searchByBarcode → capacité absente.
+    const svc = makeService([adapter]);
+    await expect(
+      svc.search(USER, 'vinyl', { barcode: '0888072024557' }, undefined, 10),
+    ).rejects.toBeInstanceOf(BadRequestException);
+  });
+
+  it('warmEditionMapping délègue à la BnF et résout jaquette + résumé de chaque tome (isbn + hint)', async () => {
+    const mapping = {
+      titleFr: "L'attaque des titans",
+      edition: 'Éd. colossale',
+      tomeCount: 2,
+      tomes: [
+        {
+          editionVolume: 1,
+          isbn: '111',
+          titleFr: 'T.1',
+          sourceVolumeRange: null,
+          description: 'Résumé BnF du tome 1',
+        },
+        {
+          editionVolume: 2,
+          isbn: null,
+          titleFr: 'T.2',
+          sourceVolumeRange: null,
+          description: null,
+        },
+      ],
+      recordsScanned: 30,
+      ongoing: false,
+    };
+    bnfMock.enumerateEdition.mockResolvedValue(mapping);
+    gbooksMock.resolveCoverAndDescription.mockImplementation(
+      async (isbn: string) =>
+        isbn === '111'
+          ? {
+              coverUrl: 'https://img/1.jpg',
+              description: 'Résumé GB ignoré',
+              status: 'found',
+            }
+          : { coverUrl: null, description: null, status: 'absent' },
+    );
+    const svc = makeService([]);
+
+    const res = await svc.warmEditionMapping(
+      "L'attaque des titans",
+      'Éd. colossale',
+    );
+
+    expect(bnfMock.enumerateEdition).toHaveBeenCalledWith(
+      "L'attaque des titans",
+      'Éd. colossale',
+      { publisher: undefined, since: undefined },
+    );
+    // Tome sans ISBN → aucune résolution tentée. Le hint porte titre série + n° tome + édition.
+    expect(gbooksMock.resolveCoverAndDescription).toHaveBeenCalledTimes(1);
+    expect(gbooksMock.resolveCoverAndDescription).toHaveBeenCalledWith('111', {
+      title: "L'attaque des titans",
+      volume: 1,
+      edition: 'Éd. colossale',
+    });
+    expect(res.tomeCount).toBe(2);
+    expect(res.tomes).toEqual([
+      {
+        editionVolume: 1,
+        isbn: '111',
+        titleFr: 'T.1',
+        sourceVolumeRange: null,
+        // 330$a BnF prioritaire : le résumé Google Books est ignoré quand la BnF en a un.
+        description: 'Résumé BnF du tome 1',
+        coverUrl: 'https://img/1.jpg',
+        coverStatus: 'found',
+        // MangaDex ne matche pas (mock vide) → jaquette servie par Google Books.
+        coverSource: 'google_books',
+      },
+      {
+        editionVolume: 2,
+        isbn: null,
+        titleFr: 'T.2',
+        sourceVolumeRange: null,
+        description: null,
+        coverUrl: null,
+        // Tome sans ISBN → absence définitive (rien à interroger).
+        coverStatus: 'absent',
+        coverSource: null,
+      },
+    ]);
+  });
+
+  it('warmEditionMapping: repli sur le résumé Google Books quand la BnF (330$a) est absente', async () => {
+    bnfMock.enumerateEdition.mockResolvedValue({
+      titleFr: 'X',
+      edition: null,
+      tomeCount: 1,
+      tomes: [
+        {
+          editionVolume: 1,
+          isbn: '111',
+          titleFr: 'T.1',
+          sourceVolumeRange: null,
+          description: null,
+        },
+      ],
+      recordsScanned: 1,
+      ongoing: false,
+    });
+    gbooksMock.resolveCoverAndDescription.mockResolvedValue({
+      coverUrl: null,
+      description: 'Résumé Google Books',
+    });
+    const svc = makeService([]);
+
+    const res = await svc.warmEditionMapping('X');
+
+    expect(res.tomes[0].description).toBe('Résumé Google Books');
+  });
+
+  it('editionMapping passe null quand aucune édition (standard)', async () => {
+    bnfMock.enumerateEdition.mockResolvedValue({ tomeCount: 34, tomes: [] });
+    const svc = makeService([]);
+    await svc.editionMapping('Naruto');
+    expect(bnfMock.enumerateEdition).toHaveBeenCalledWith('Naruto', null, {
+      publisher: undefined,
+      since: undefined,
+    });
+  });
+
+  it('editionMapping transmet éditeur et rattrapage (since) à l’énumération', async () => {
+    bnfMock.enumerateEdition.mockResolvedValue({ tomeCount: 0, tomes: [] });
+    const svc = makeService([]);
+    await svc.editionMapping('Sakamoto days', undefined, undefined, 'md-1', {
+      publisher: 'Glénat',
+      since: '20260701',
+    });
+    expect(bnfMock.enumerateEdition).toHaveBeenCalledWith(
+      'Sakamoto days',
+      null,
+      { publisher: 'Glénat', since: '20260701' },
+    );
+  });
+
+  describe('listEditions (GET /v1/search/editions)', () => {
+    const SUMMARY = {
+      mangaId: 'md-snk',
+      title: "L'attaque des titans",
+      titleFr: "L'attaque des titans",
+      titleRomaji: 'Shingeki no Kyojin',
+      altTitles: ['Attack on Titan', "L'attaque des titans"],
+      authors: ['Isayama Hajime'],
+    };
+
+    it('relit la série par id et interroge la BnF : titre FR, saisie, romaji', async () => {
+      mangadexMock.fetchSeries.mockResolvedValue({
+        status: 'found',
+        summary: SUMMARY,
+      });
+      bnfMock.listEditions.mockResolvedValue({
+        editions: [{ publisher: 'Pika' }],
+        complete: false,
+      });
+      const svc = makeService([]);
+
+      const res = await svc.listEditions('md-snk', 'attaque titans');
+
+      expect(mangadexMock.fetchSeries).toHaveBeenCalledWith('md-snk');
+      expect(bnfMock.listEditions).toHaveBeenCalledWith(
+        ["L'attaque des titans", 'attaque titans', 'Shingeki no Kyojin'],
+        [
+          "L'attaque des titans",
+          'attaque titans',
+          'Shingeki no Kyojin',
+          'Attack on Titan',
+          "L'attaque des titans",
+        ],
+        ['Isayama Hajime'],
+      );
+      // `complete` relayé tel quel : l'app peut proposer de réessayer une liste partielle.
+      expect(res).toEqual({
+        mangaId: 'md-snk',
+        editions: [{ publisher: 'Pika' }],
+        complete: false,
+      });
+    });
+
+    it('id inconnu de MangaDex → 404', async () => {
+      mangadexMock.fetchSeries.mockResolvedValue({ status: 'absent' });
+      const svc = makeService([]);
+      await expect(svc.listEditions('md-x')).rejects.toBeInstanceOf(
+        NotFoundException,
+      );
+      expect(bnfMock.listEditions).not.toHaveBeenCalled();
+    });
+
+    it('MangaDex indisponible → 502', async () => {
+      mangadexMock.fetchSeries.mockResolvedValue({ status: 'unresolved' });
+      const svc = makeService([]);
+      await expect(svc.listEditions('md-x')).rejects.toBeInstanceOf(
+        BadGatewayException,
+      );
+    });
+  });
+
+  it('editionMapping (endpoint HTTP) est cache-only : lit le cache, ne touche jamais au réseau', async () => {
+    bnfMock.enumerateEdition.mockResolvedValue({
+      titleFr: 'X',
+      edition: null,
+      tomeCount: 1,
+      tomes: [
+        {
+          editionVolume: 1,
+          isbn: '111',
+          titleFr: 'T.1',
+          sourceVolumeRange: null,
+          description: null,
+        },
+      ],
+      recordsScanned: 1,
+      ongoing: false,
+    });
+    gbooksMock.cachedCoverAndDescription.mockResolvedValue({
+      coverUrl: 'https://img/cache.jpg',
+      description: 'Résumé caché',
+      status: 'found',
+    });
+    const svc = makeService([]);
+
+    const res = await svc.editionMapping('X');
+
+    // Sert la jaquette du cache et n'enfile JAMAIS de résolution réseau (anti-timeout client).
+    expect(gbooksMock.cachedCoverAndDescription).toHaveBeenCalledWith('111');
+    expect(gbooksMock.resolveCoverAndDescription).not.toHaveBeenCalled();
+    expect(res.tomes[0].coverUrl).toBe('https://img/cache.jpg');
+    expect(res.tomes[0].description).toBe('Résumé caché');
+    expect(res.tomes[0].coverStatus).toBe('found');
+  });
+
+  it('resolveCover délègue à GoogleBooksCoverService (sans hint)', async () => {
+    gbooksMock.resolveCover.mockResolvedValue('https://img/x.jpg');
+    const svc = makeService([]);
+
+    const url = await svc.resolveCover('978-2-505-01194-3');
+
+    expect(gbooksMock.resolveCover).toHaveBeenCalledWith(
+      '978-2-505-01194-3',
+      undefined,
+    );
+    expect(url).toBe('https://img/x.jpg');
+  });
+
+  it('resolveCover transmet le hint de repli (titre/tome/édition) à GoogleBooks', async () => {
+    gbooksMock.resolveCover.mockResolvedValue('https://img/y.jpg');
+    const svc = makeService([]);
+    const hint = { title: 'Jujutsu kaisen', volume: 6, edition: null };
+
+    const url = await svc.resolveCover('9791032706343', hint);
+
+    expect(gbooksMock.resolveCover).toHaveBeenCalledWith('9791032706343', hint);
+    expect(url).toBe('https://img/y.jpg');
+  });
+});

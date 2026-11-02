@@ -201,6 +201,15 @@ export const ROUTE_TABLE: RouteRule[] = [
     premium: 'none',
   },
   {
+    // Editions d'une serie manga (projection des notices BnF). Sans gate premium, comme le
+    // reste de la recherche : ajouter une serie en wishlist ne demande pas la synchro.
+    methods: ['GET'],
+    pattern: '/v1/search/editions',
+    target: svc('search'),
+    auth: 'user',
+    premium: 'none',
+  },
+  {
     methods: ['GET'],
     pattern: '/v1/search/cover',
     target: svc('search'),
@@ -234,6 +243,25 @@ export const ROUTE_TABLE: RouteRule[] = [
     target: svc('search'),
     auth: 'admin',
     premium: 'none',
+  },
+  {
+    // Tomes parus depuis l'import, par serie du requerant. Premium comme la synchro : sans
+    // elle, le serveur ne connait ni ses series ni ses tomes. `search` le reverifie sur le
+    // principal, pour l'appel qui ne passerait pas par ici.
+    methods: ['GET'],
+    pattern: '/v1/series-updates',
+    target: svc('search'),
+    auth: 'user',
+    premium: 'requester',
+  },
+  {
+    // Passage de rattrapage hors planification. Meme resserrage que dans le monolithe.
+    methods: ['POST'],
+    pattern: '/v1/admin/edition-watch/run',
+    target: svc('search'),
+    auth: 'admin',
+    premium: 'none',
+    rateLimitPerMin: 5,
   },
 
   // ------------------------------------------------------------------ sharing

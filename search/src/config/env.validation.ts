@@ -33,6 +33,13 @@ export const EnvSchema = z.object({
   CONNECTIONS_BASE_URL: z.string().url().optional(),
   /** Journal d'audit - il vit dans `identity`. */
   IDENTITY_BASE_URL: z.string().url().optional(),
+  /**
+   * Rattrapage des tomes manga : les series et les tomes possedes vivent dans `catalog-manga`,
+   * le premium dans `billing`. L'un ou l'autre absent, le passage hebdomadaire ne surveille rien
+   * et `GET /v1/series-updates` repond 503.
+   */
+  CATALOG_MANGA_BASE_URL: z.string().url().optional(),
+  BILLING_BASE_URL: z.string().url().optional(),
 
   // --- Cles serveur des sources (repli premium) -------------------------------
   DISCOGS_CONSUMER_KEY: z.string().optional(),

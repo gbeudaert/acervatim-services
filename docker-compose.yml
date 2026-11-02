@@ -178,6 +178,9 @@ services:
       DATABASE_URL: 'mysql://${MARIADB_USER:-acervatim}:${MARIADB_PASSWORD:-changeme}@db:3306/acv_search'
       IDENTITY_BASE_URL: http://identity:3110
       CONNECTIONS_BASE_URL: http://connections:3130
+      # Rattrapage des tomes manga : series et tomes possedes, puis premium du proprietaire.
+      CATALOG_MANGA_BASE_URL: http://catalog-manga:3170
+      BILLING_BASE_URL: http://billing:3120
     volumes:
       - ./search:/app
       - /app/node_modules

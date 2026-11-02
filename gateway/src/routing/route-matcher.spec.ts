@@ -38,6 +38,18 @@ describe('matchRoute', () => {
     expect(matchRoute('GET', '/v1/search')?.rule.pattern).toBe('/v1/search');
   });
 
+  it('route le rattrapage manga vers search, premium du requerant sur la lecture', () => {
+    expect(matchRoute('GET', '/v1/search/editions')?.rule.pattern).toBe(
+      '/v1/search/editions',
+    );
+    const updates = matchRoute('GET', '/v1/series-updates')?.rule;
+    expect(updates?.target).toEqual({ kind: 'service', service: 'search' });
+    expect(updates?.premium).toBe('requester');
+    const run = matchRoute('POST', '/v1/admin/edition-watch/run')?.rule;
+    expect(run?.target).toEqual({ kind: 'service', service: 'search' });
+    expect(run?.auth).toBe('admin');
+  });
+
   it('ignore la query string', () => {
     expect(matchRoute('GET', '/v1/collections?type[in]=manga')?.rule.target.kind).toBe(
       'catalog:scatter',
