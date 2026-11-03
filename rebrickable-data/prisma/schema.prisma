@@ -1,0 +1,116 @@
+// Schema du service rebrickable-data. Schema logique dedie (`acv_rebrickable`) sur l'instance
+// MariaDB partagee : AUCUNE relation ne franchit la frontiere du service (cf.
+// ../../../../acervatim-docs/agent/backend/architecture-microservices.md, invariant central).
+//
+// Base de reference du catalogue LEGO : sets, themes et codes-barres. **Aucune donnee
+// d'utilisateur** - ce service ne participe pas a la saga RGPD.
+//
+// `theme_id` n'a volontairement pas de `@relation` vers `lego_themes` : les deux tables sont
+// alimentees par deux CSV distincts, et une contrainte ferait echouer l'import d'un set dont le
+// theme n'est pas encore publie, au lieu de l'afficher sans theme.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+/// Cache generique (meme contrat que dans `search`). Ici, il ne porte que le compteur du
+/// budget Brickset du jour (`brickset:budget:YYYY-MM-DD`).
+model ApiCache {
+  cacheKey  String   @id @map("cache_key") @db.VarChar(255)
+  payload   Json
+  fetchedAt DateTime @default(now()) @map("fetched_at")
+  expiresAt DateTime @map("expires_at")
+
+  @@index([expiresAt])
+  @@map("api_cache")
+}
+
+/// Arbre des themes Rebrickable (`themes.csv`), rafraichi a chaque import. Un theme absent du
+/// dernier CSV n'est pas supprime (des sets le referencent) : il est marque `retiredAt`.
+model LegoTheme {
+  /// `id` Rebrickable, repris tel quel : c'est la valeur de `lego_sets.theme_id`.
+  id        Int       @id
+  name      String    @db.VarChar(255)
+  /// Forme canonique du filtre `theme=` (`technic`, `star-wars`). Le premier id d'un nom garde
+  /// le slug nu, les suivants prennent `-{id}`.
+  slug      String    @unique @db.VarChar(255)
+  parentId  Int?      @map("parent_id")
+  /// Chemin depuis la racine ("Technic / Star Wars"), pre-calcule a l'import.
+  path      String    @db.VarChar(512)
+  /// Profondeur dans l'arbre (0 = theme de tete).
+  depth     Int       @default(0)
+  /// Absent du dernier `themes.csv` : ni liste ni resolvable par slug, mais toujours affichable
+  /// par id pour les sets qui le referencent. Remis a `NULL` s'il reparait.
+  retiredAt DateTime? @map("retired_at")
+
+  @@index([parentId])
+  @@map("lego_themes")
+}
+
+/// Un set LEGO. L'import CSV ecrit tout **sauf** `ean`, `upc` et `brickset_id`, que seul le
+/// moissonnage Brickset ecrit - et lui n'ecrit que ces trois colonnes.
+///
+/// Pas de colonne `sources` : `contributedBy` se deduit des donnees (`brickset` si
+/// `bricksetId` est renseigne). Une colonne libre derivait (bug `sources='brickset'` de
+/// catalog-lego).
+model LegoSet {
+  /// Numero canonique Rebrickable, suffixe de version inclus : "42131-1".
+  setNum     String   @id @map("set_num") @db.VarChar(32)
+  name       String   @db.VarChar(512)
+  year       Int?
+  themeId    Int?     @map("theme_id")
+  numParts   Int?     @map("num_parts")
+  /// Somme des quantites de l'inventaire de plus petite version. `0` si cet inventaire n'a pas
+  /// de figurine, `null` si le set n'a aucun inventaire.
+  minifigs   Int?
+  /// URL publique du visuel chez Rebrickable. Jamais telecharge ici.
+  imageUrl   String?  @map("image_url") @db.VarChar(1024)
+  /// EAN-13 de la boite (Brickset). Non unique : un code peut couvrir plusieurs references.
+  ean        String?  @db.VarChar(14)
+  /// UPC-A nord-americain (Brickset).
+  upc        String?  @db.VarChar(14)
+  /// Identifiant Brickset, garde pour rejouer un rapprochement sans re-moissonner.
+  bricksetId Int?     @map("brickset_id")
+  /// Ne bouge que si une valeur change (l'import CSV compare avant d'ecrire).
+  updatedAt  DateTime @updatedAt @map("updated_at")
+
+  @@index([ean])
+  @@index([upc])
+  @@index([themeId])
+  /// Tri de toutes les listes : `year desc, setNum asc`. Pas d'index sur `name` : la recherche
+  /// est un `LIKE '%...%'`, qu'aucun index B-tree ne sert.
+  @@index([year(sort: Desc), setNum])
+  @@map("lego_sets")
+}
+
+/// Trace d'un import CSV Rebrickable ou d'une campagne Brickset.
+///
+/// - `source` : `rebrickable` | `brickset`.
+/// - `mode` : `full` | `forced` (CSV) ; `full` | `incremental` (Brickset).
+/// - `state` : `running` | `done` | `unchanged` | `failed` | `paused` | `superseded`.
+/// - `watermark` : CSV, `Last-Modified` de `sets.csv.gz` importe ; Brickset, borne haute figee
+///   avant le premier appel, lue par la campagne incrementale suivante sur le dernier `done`.
+/// - `lastPage` : Brickset, derniere page consommee - la reprise part de la suivante.
+model ImportRun {
+  id           String    @id @default(uuid()) @db.Char(36)
+  source       String    @db.VarChar(32)
+  mode         String    @db.VarChar(16)
+  state        String    @default("running") @db.VarChar(16)
+  startedAt    DateTime  @default(now()) @map("started_at")
+  finishedAt   DateTime? @map("finished_at")
+  lastPage     Int       @default(0) @map("last_page")
+  watermark    DateTime?
+  callsUsed    Int       @default(0) @map("calls_used")
+  rowsUpserted Int       @default(0) @map("rows_upserted")
+  unmatched    Int       @default(0)
+  lastError    String?   @map("last_error") @db.Text
+
+  @@index([source, state])
+  @@index([startedAt])
+  @@map("import_runs")
+}

@@ -14,6 +14,7 @@ CREATE DATABASE IF NOT EXISTS acv_search      CHARACTER SET utf8mb4 COLLATE utf8
 CREATE DATABASE IF NOT EXISTS acv_cat_generic CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE DATABASE IF NOT EXISTS acv_cat_manga   CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE DATABASE IF NOT EXISTS acv_cat_vinyl   CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE IF NOT EXISTS acv_rebrickable CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- Permission large, DEV UNIQUEMENT : `prisma migrate dev` cree une shadow database, ce qui
 -- exige CREATE/DROP hors du schema du service (sinon P3014). En production chaque service

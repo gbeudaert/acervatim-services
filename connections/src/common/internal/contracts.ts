@@ -300,6 +300,90 @@ export interface InternalSourceSnapshotResponse {
   fetchedAt: string | null;
 }
 
+// --------------------------------------------------------------------------- rebrickable-data
+
+/**
+ * Base de reference du catalogue LEGO, servie par `rebrickable-data` : sets, themes et codes-
+ * barres, alimentes par les CSV publics Rebrickable et par le moissonnage Brickset. Aucune
+ * route publique, aucune donnee d'utilisateur - ce service ne participe pas a la saga RGPD.
+ *
+ * Toutes ces routes sont des **lectures locales** : aucune ne declenche d'appel sortant, ni
+ * vers Rebrickable ni vers Brickset.
+ *
+ * - `GET /internal/sets?q=&theme=&offset=&limit=` -> {@link InternalLegoSetPage}. `limit` 1 a
+ *   100 (defaut 50), `offset` 0 a 100 000 (defaut 0), `q` 1 a 200 caracteres ; un parametre
+ *   inconnu est un `400`. `theme` inconnu : `404`.
+ * - `GET /internal/sets/by-barcode/:code` -> `{ items: InternalLegoSet[] }`, 20 au plus. `code` :
+ *   6 a 20 chiffres, tirets et espaces toleres (non comptes) ; hors de ces bornes : `400`. Aucun
+ *   resultat n'est un `200` a liste vide, jamais un `404`.
+ * - `GET /internal/sets/:setNum` -> {@link InternalLegoSet}, `404` si inconnu.
+ * - `GET /internal/themes?parent=` -> `{ items: InternalLegoTheme[] }` : themes de tete sans
+ *   `parent`, enfants directs sinon. `parent` inconnu : `404`.
+ *
+ * `q` et `setNum` sont **insensibles a la casse** (collation de la base) : `comcon001-1` trouve
+ * `COMCON001-1`, et la reponse porte la forme stockee. Toute erreur est un Problem Details
+ * RFC 9457 (`type`, `title`, `status`, `detail`), comme partout dans la constellation.
+ */
+
+/**
+ * Un theme de l'arbre Rebrickable. `slug` est la forme acceptee par `theme=` et `parent=` : le
+ * premier id d'un nom garde le slug nu (`technic`), les suivants prennent `-{id}`.
+ *
+ * **`slug` n'est pas un identifiant stable** : il est recalcule a chaque import, et un renommage
+ * ou une suppression cote Rebrickable peut le deplacer d'un theme a l'autre. Pour memoriser un
+ * theme, garder `id`. Un theme retire du CSV n'est plus liste ni resolvable par slug, mais reste
+ * decrit dans `InternalLegoSet.theme` des sets qui le referencent.
+ */
+export interface InternalLegoTheme {
+  id: number;
+  name: string;
+  slug: string;
+  parentId: number | null;
+  /** Chemin depuis la racine : "Technic / Star Wars". */
+  path: string;
+  /** `0` pour un theme de tete. */
+  depth: number;
+}
+
+/**
+ * Un set LEGO.
+ *
+ * `contributedBy` se **deduit des donnees** : `rebrickable` toujours, `brickset` si un
+ * identifiant Brickset est connu. Ce n'est pas une colonne libre - celle de `catalog-lego`
+ * derivait.
+ */
+export interface InternalLegoSet {
+  /** Numero canonique, suffixe de version inclus : "42131-1". */
+  setNum: string;
+  /** Numero sans le suffixe de version, tel qu'imprime sur la boite : "42131". */
+  setNumber: string;
+  name: string;
+  year: number | null;
+  numParts: number | null;
+  /**
+   * Figurines de l'inventaire de plus petite version. `0` : aucune figurine dans l'inventaire
+   * **propre** du set ; `null` : set sans inventaire publie. Les sets imbriques
+   * (`inventory_sets` : packs, coffrets) ne sont pas suivis - un coffret dont les figurines sont
+   * dans ses sous-sets vaut donc `0`.
+   */
+  minifigs: number | null;
+  /** URL publique chez Rebrickable : l'appelant la sert telle quelle, rien n'est recopie. */
+  imageUrl: string | null;
+  theme: { id: number; name: string; path: string; slug: string } | null;
+  barcodes: { ean: string | null; upc: string | null };
+  contributedBy: Array<'rebrickable' | 'brickset'>;
+}
+
+/**
+ * `GET /internal/sets` : page par decalage, triee `year desc, setNum asc`. `q` retient les sets
+ * dont le numero commence par la valeur ou dont le nom la contient ; `theme` retient le theme
+ * **et toute sa descendance** (slug inconnu : `404`).
+ */
+export interface InternalLegoSetPage {
+  items: InternalLegoSet[];
+  hasMore: boolean;
+}
+
 // --------------------------------------------------------------------------- saga RGPD
 
 /**

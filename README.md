@@ -18,6 +18,8 @@ App Android ──HTTPS──> gateway  (/v1/*, JWT, routage, agregation OpenAPI
      ┌─────────────┬──────┴──────┬─────────────────┬──────────┬──────────┐
  catalog-manga  catalog-vinyl  catalog-generic  sharing    search   connections
      └───────────── identity (auth/users/RGPD/audit) ── billing (premium/subs/invit.)
+
+ rebrickable-data (catalogue LEGO de reference) : hors gateway, /internal/* et /admin/* seulement
 ```
 
 | Service | Port | Schema | Perimetre |
@@ -31,12 +33,19 @@ App Android ──HTTPS──> gateway  (/v1/*, JWT, routage, agregation OpenAPI
 | [`catalog-generic`](catalog-generic/) | 3160 | `acv_cat_generic` | movie, book, game |
 | [`catalog-manga`](catalog-manga/) | 3170 | `acv_cat_manga` | manga |
 | [`catalog-vinyl`](catalog-vinyl/) | 3180 | `acv_cat_vinyl` | vinyle |
+| [`rebrickable-data`](rebrickable-data/) | 3190 | `acv_rebrickable` | Catalogue LEGO de reference (CSV Rebrickable, codes-barres Brickset) - **interne**, non route par le gateway |
 | [`catalog-core`](catalog-core/) | - | - | **Bibliotheque** : le CRUD mutualise par les trois catalogs |
 | [`catalog-lego`](catalog-lego/) | 3010 | `acv_cat_lego` | LEGO - stack autonome, anterieure a la constellation |
 | [`deploy`](deploy/) | - | - | **Deploiement** : Quadlet Podman, manifeste Kubernetes, images de production |
 
 **Une seule instance MariaDB, un schema logique par service, aucune FK inter-schemas.** C'est
 la decision actee du 7, et elle est la source de presque tout le travail decrit ci-dessous.
+
+**Transition LEGO.** Tant que `catalog-lego` n'est pas branche sur `rebrickable-data`,
+`BRICKSET_API_KEY` n'est renseignee **que** dans le `.env` de la constellation (pour
+`rebrickable-data`) et reste vide dans `catalog-lego/.env` : deux moissonneurs sur la meme cle
+se partageraient le quota de 100 appels par jour. Voir `.env.example` et
+[rebrickable-data](rebrickable-data/README.md#4-demarrage).
 
 ---
 
@@ -138,8 +147,10 @@ reseau interne, pas la limitation principale.
 
 ## 6. Etat, et ce qui reste a faire
 
-**Ce qui est fait** : les neuf services compilent, leurs tests unitaires passent, et le contrat
-`/v1/*` est couvert de bout en bout par la table de routage du gateway.
+**Ce qui est fait** : les dix services compilent, leurs tests unitaires passent, et le contrat
+`/v1/*` est couvert de bout en bout par la table de routage du gateway. `rebrickable-data`, qui
+n'a pas de route `/v1/*`, a en plus tourne contre la vraie base : import complet des CSV
+Rebrickable, puis `unchanged` au second passage.
 
 **Ce qui ne l'est pas, et qui compte** :
 
@@ -156,6 +167,6 @@ reseau interne, pas la limitation principale.
   et les gardes du monolithe. Ils doivent revenir dans `catalog-core`, ou ils vaudront pour les
   trois catalogs a la fois.
 - **La reserve du TL;DR de l'architecture reste entiere.** Le domaine tient en ~13 000 LOC
-  servies a un unique client Android ; neuf processus Node/Nest representent de l'ordre de 1 a
-  1,4 Go de RSS au repos. Le phasage etait concu pour etre **arretable a chaque palier** - ce
+  servies a un unique client Android ; dix processus Node/Nest representent de l'ordre de 1,1 a
+  1,5 Go de RSS au repos. Le phasage etait concu pour etre **arretable a chaque palier** - ce
   code livre la cible complete, il ne dit pas qu'il faut la deployer.

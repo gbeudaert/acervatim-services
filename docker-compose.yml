@@ -7,7 +7,7 @@
 # `catalog-lego` n'est PAS ici : il a sa propre stack (3010/3307/6380), anterieure a la
 # constellation, et tourne en parallele sans conflit.
 #
-# Ports : 3100 gateway (le seul que l'app connait), 3110-3180 services, 3320 MariaDB,
+# Ports : 3100 gateway (le seul que l'app connait), 3110-3190 services, 3320 MariaDB,
 # 6390 Redis. Tous decales pour cohabiter avec le monolithe (3000/3306/6379) et avec LEGO.
 
 x-service-base: &service-base
@@ -183,6 +183,26 @@ services:
       BILLING_BASE_URL: http://billing:3120
     volumes:
       - ./search:/app
+      - /app/node_modules
+
+  # ---------------------------------------------------------------- donnees de reference
+  # Catalogue LEGO de reference (CSV Rebrickable, codes-barres Brickset). PAS route par le
+  # gateway : seules `/internal/*` (voisins) et `/admin/*` (exploitation) existent. Aucune
+  # donnee d'utilisateur, donc absent de SAGA_PARTICIPANTS.
+  rebrickable-data:
+    <<: *service-base
+    build:
+      context: ./rebrickable-data
+      dockerfile: Dockerfile.dev
+    container_name: acervatim-rebrickable-data
+    ports:
+      - '3190:3190'
+    environment:
+      <<: *service-env
+      PORT: 3190
+      DATABASE_URL: 'mysql://${MARIADB_USER:-acervatim}:${MARIADB_PASSWORD:-changeme}@db:3306/acv_rebrickable'
+    volumes:
+      - ./rebrickable-data:/app
       - /app/node_modules
 
   # ---------------------------------------------------------------- catalogs par type

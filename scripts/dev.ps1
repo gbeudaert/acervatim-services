@@ -28,11 +28,14 @@ if ($null -eq $Rest) { $Rest = @() }
 
 # Ordre de demarrage et de migration : les dependances d'abord. `identity` avant tout
 # (il emet les JWT), les catalogs en dernier (ils enregistrent leurs collections aupres
-# du registre de routage du gateway au boot).
+# du registre de routage du gateway au boot). `rebrickable-data` ne depend de personne.
 $AllServices = @(
     'gateway', 'identity', 'billing', 'connections', 'sharing', 'search',
-    'catalog-generic', 'catalog-manga', 'catalog-vinyl'
+    'rebrickable-data', 'catalog-generic', 'catalog-manga', 'catalog-vinyl'
 )
+
+# Port publie de rebrickable-data : ses routes /admin/* ne passent pas par le gateway.
+$RebrickableDataPort = 3190
 
 function Show-Help {
     @"
@@ -69,10 +72,15 @@ Qualite :
   test <svc> [args]    jest
   build-ts [svc]       nest build - verification de compilation (toutes si omis)
 
+Catalogue LEGO (rebrickable-data, jeton ADMIN_API_TOKEN lu dans .env) :
+  lego-status          Comptes, budget Brickset du jour, 10 derniers runs
+  lego-import [force]  Import des CSV Rebrickable (force : ignore Last-Modified)
+  lego-brickset        Campagne Brickset des codes-barres, dans le budget du jour
+
 Services : $($AllServices -join ', ')
 Ports    : gateway 3100, identity 3110, billing 3120, connections 3130,
            sharing 3140, search 3150, catalog-generic 3160, catalog-manga 3170,
-           catalog-vinyl 3180 - MariaDB 3320, Redis 6390.
+           catalog-vinyl 3180, rebrickable-data 3190 - MariaDB 3320, Redis 6390.
 "@ | Write-Host
 }
 
@@ -128,7 +136,7 @@ function Invoke-Health {
     $ports = @{
         'gateway' = 3100; 'identity' = 3110; 'billing' = 3120; 'connections' = 3130
         'sharing' = 3140; 'search' = 3150; 'catalog-generic' = 3160
-        'catalog-manga' = 3170; 'catalog-vinyl' = 3180
+        'catalog-manga' = 3170; 'catalog-vinyl' = 3180; 'rebrickable-data' = 3190
     }
     foreach ($svc in $AllServices) {
         $uri = "http://localhost:$($ports[$svc])/health/ready"
@@ -140,6 +148,57 @@ function Invoke-Health {
             Write-Host ("{0,-16} INJOIGNABLE ({1})" -f $svc, $_.Exception.Message) -ForegroundColor Red
         }
     }
+}
+
+# Lit une variable du .env de la racine (le meme que celui des conteneurs), quel que soit le
+# repertoire courant. Valeur entre guillemets : prise telle quelle. Sinon, un commentaire de fin
+# de ligne (espace puis #) est retire, comme le fait docker compose.
+function Get-DotEnvValue {
+    param([string]$Name)
+    $envFile = Join-Path $PSScriptRoot '..\.env'
+    if (-not (Test-Path $envFile)) { throw ".env absent : copier .env.example puis le remplir" }
+    $pattern = '^\s*' + [regex]::Escape($Name) + '\s*=\s*(.*)$'
+    foreach ($line in Get-Content $envFile) {
+        if ($line -match $pattern) {
+            $raw = $Matches[1].Trim()
+            if ($raw -match '^"([^"]*)"') { return $Matches[1] }
+            if ($raw -match "^'([^']*)'") { return $Matches[1] }
+            return ($raw -replace '\s+#.*$', '').Trim()
+        }
+    }
+    return ''
+}
+
+# Appel d'une route /admin/* de rebrickable-data. Delai long : un import complet attend la fin
+# du telechargement et de l'ecriture des ~28 000 sets avant de repondre. Sur erreur HTTP, le
+# corps Problem Details (RFC 9457) est affiche tel quel : c'est lui qui dit pourquoi.
+function Invoke-LegoAdmin {
+    param([string]$Method, [string]$Path)
+    $token = Get-DotEnvValue 'ADMIN_API_TOKEN'
+    if ([string]::IsNullOrWhiteSpace($token)) { throw 'ADMIN_API_TOKEN vide dans .env' }
+    $uri = "http://localhost:$RebrickableDataPort/$Path"
+    try {
+        $res = Invoke-RestMethod -Method $Method -Uri $uri -TimeoutSec 900 `
+            -Headers @{ Authorization = "Bearer $token" }
+    }
+    catch {
+        $err = $_
+        $body = $null
+        if ($err.ErrorDetails -and $err.ErrorDetails.Message) {
+            $body = $err.ErrorDetails.Message
+        }
+        elseif ($err.Exception.Response) {
+            try {
+                $reader = New-Object System.IO.StreamReader($err.Exception.Response.GetResponseStream())
+                $body = $reader.ReadToEnd()
+            }
+            catch { $body = $null }
+        }
+        Write-Host ("{0} /{1} : {2}" -f $Method, $Path, $err.Exception.Message) -ForegroundColor Red
+        if ($body) { Write-Host $body -ForegroundColor Red }
+        exit 1
+    }
+    $res | ConvertTo-Json -Depth 8 | Write-Host
 }
 
 switch ($Command) {
@@ -178,6 +237,16 @@ switch ($Command) {
     'format' { Invoke-InService $Service @('npm', 'run', 'format') }
     'test' { Invoke-InService $Service (@('npm', 'run', 'test', '--') + $Rest) }
     'build-ts' { Invoke-EachOrOne $Service @('npm', 'run', 'build') }
+    'lego-status' { Invoke-LegoAdmin 'GET' 'admin/status' }
+    'lego-import' {
+        $extra = -not [string]::IsNullOrWhiteSpace($Service) -and $Service -ne 'force'
+        if ($extra -or $Rest.Count -gt 0) {
+            throw "lego-import n'accepte qu'un argument optionnel : force"
+        }
+        $query = if ($Service -eq 'force') { '?force=true' } else { '' }
+        Invoke-LegoAdmin 'POST' "admin/import/rebrickable$query"
+    }
+    'lego-brickset' { Invoke-LegoAdmin 'POST' 'admin/harvest/brickset' }
     default {
         Write-Host "Commande inconnue : $Command"
         Show-Help
