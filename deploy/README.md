@@ -200,8 +200,11 @@ Tout est nomme distinctement pour que les deux stacks tournent en parallele pend
 | Port publie | 3000 | 3100 |
 | Unites | `acervatim-api`, `acervatim-redis` | `acervatim`, `acervatim-db`, `acervatim-redis` |
 
-Le jour de la bascule, il suffit de faire pointer le reverse proxy de 3000 vers 3100 : le
-contrat `/v1/*` est identique, c'est toute la contrainte du decoupage.
+Cote app, la bascule se resume a faire pointer le reverse proxy de 3000 vers 3100 : le contrat
+`/v1/*` est identique, c'est toute la contrainte du decoupage. **Cote donnees, non** : la
+constellation demarre sur neuf schemas vides. Le proxy ne se bascule qu'apres la reprise des
+donnees du monolithe, ecritures gelees, et avec les memes secrets -
+[`../db/reprise/README.md`](../db/reprise/README.md) donne la procedure et le retour arriere.
 
 ---
 

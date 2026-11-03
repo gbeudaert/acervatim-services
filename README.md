@@ -154,8 +154,13 @@ Rebrickable, puis `unchanged` au second passage.
 
 **Ce qui ne l'est pas, et qui compte** :
 
-- **Rien n'a tourne contre une vraie base.** Les migrations Prisma sont ecrites a la main, pas
-  generees par `migrate dev` contre MariaDB. Le premier `up-bg` est le vrai test.
+- **Les migrations n'ont tourne qu'en developpement.** Ecrites a la main, pas generees par
+  `migrate dev`, elles se sont appliquees sans erreur au premier `up-bg` (2026-11-02), et le
+  parcours manga est passe de bout en bout a travers le gateway. Rien n'a encore tourne sous
+  Podman.
+- **La bascule exige une reprise des donnees**, sinon le proxy servirait neuf schemas vides :
+  [`db/reprise/`](db/reprise/README.md). Elle a ete repetee en developpement, jamais sur un
+  vidage de production - c'est cette repetition qui dira la duree de la fenetre.
 - **Aucune mesure du 4 n'a ete produite** : RSS total au repos, p95 de `GET /v1/collections` et
   de `GET /v1/collections/:id/items`, ecart du registre apres re-scan, jobs RGPD non termines.
   L'architecture demande explicitement de **mesurer et non de supposer** avant chaque palier -
