@@ -50,6 +50,17 @@ describe('matchRoute', () => {
     expect(run?.auth).toBe('admin');
   });
 
+  it('route le code-barres de jeu de societe vers search, sous authentification', () => {
+    const lookup = matchRoute('GET', '/v1/search/boardgame/barcode/3664824001215?q=kingdomino');
+    expect(lookup?.rule.pattern).toBe('/v1/search/boardgame/barcode/:code');
+    expect(lookup?.params.code).toBe('3664824001215');
+    expect(lookup?.rule.auth).toBe('user');
+    const choice = matchRoute('POST', '/v1/search/boardgame/barcode/3664824001215/choice')?.rule;
+    expect(choice?.target).toEqual({ kind: 'service', service: 'search' });
+    expect(choice?.auth).toBe('user');
+    expect(choice?.rateLimitPerMin).toBe(30);
+  });
+
   it('ignore la query string', () => {
     expect(matchRoute('GET', '/v1/collections?type[in]=manga')?.rule.target.kind).toBe(
       'catalog:scatter',

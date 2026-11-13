@@ -252,6 +252,25 @@ export const ROUTE_TABLE: RouteRule[] = [
     premium: 'none',
   },
   {
+    // Code-barres d'un jeu de societe -> BoardGameGeek (GameUPC puis BGG). Toujours sous
+    // `auth: 'user'` : les donnees BGG ne se redistribuent pas par une API publique.
+    methods: ['GET'],
+    pattern: '/v1/search/boardgame/barcode/:code',
+    target: svc('search'),
+    auth: 'user',
+    premium: 'none',
+  },
+  {
+    // Choix de l'utilisateur, transmis a GameUPC sous pseudonyme. Plafond propre : un client
+    // en boucle ferait voter en rafale, et c'est la cle Acervatim que GameUPC revoquerait.
+    methods: ['POST'],
+    pattern: '/v1/search/boardgame/barcode/:code/choice',
+    target: svc('search'),
+    auth: 'user',
+    premium: 'none',
+    rateLimitPerMin: 30,
+  },
+  {
     methods: ['GET'],
     pattern: '/v1/search',
     target: svc('search'),
