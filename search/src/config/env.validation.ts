@@ -16,7 +16,7 @@ export const EnvSchema = z.object({
   PORT: z.coerce.number().int().default(3150),
   NODE_ENV: z.enum(['development', 'production', 'test']).default('development'),
   DATABASE_URL: z.string().url(),
-  // Redis : backing store des six files BullMQ (debit sortant borne + single-flight).
+  // Redis : backing store des files BullMQ (debit sortant borne + single-flight).
   REDIS_HOST: z.string().min(1).default('localhost'),
   REDIS_PORT: z.coerce.number().int().default(6379),
 
@@ -56,6 +56,33 @@ export const EnvSchema = z.object({
   GOOGLE_BOOKS_API_KEY: z.string().optional(),
   // Catalogue general BnF (SRU) - enumeration d'edition et pivot ISBN -> titre original.
   BNF_SRU_BASE_URL: z.string().url().default('https://catalogue.bnf.fr/api/SRU'),
+
+  // --- Jeux de societe : code-barres -> BoardGameGeek ------------------------
+  /**
+   * GameUPC. `/test` accepte la cle publique `test_test_test_test_test` mais est vide
+   * periodiquement ; `/v1` (production) exige une cle obtenue par courriel. Sans cle, la
+   * resolution repond `unavailable` (ou la derniere reponse connue).
+   */
+  GAMEUPC_BASE_URL: z.string().url().default('https://api.gameupc.com/test'),
+  GAMEUPC_API_KEY: z.string().optional(),
+  /**
+   * Pepper du pseudonyme envoye a GameUPC avec chaque vote (HMAC de l'identifiant Acervatim).
+   * Sans lui, aucun vote ne part. Le changer coupe le lien avec les votes deja emis.
+   */
+  GAMEUPC_VOTER_PEPPER: z.string().min(32).optional(),
+  /**
+   * BoardGameGeek XML API2. Jeton Bearer d'application, serveur seulement ; vide tant que la
+   * licence commerciale n'est pas accordee : aucun appel ne part.
+   */
+  BGG_API_TOKEN: z.string().optional(),
+  BGG_BASE_URL: z
+    .string()
+    .url()
+    .default('https://boardgamegeek.com/xmlapi2')
+    // Sur `www.`, BGG ignore le jeton : l'erreur doit tomber au demarrage, pas en production.
+    .refine((u) => new URL(u).hostname !== 'www.boardgamegeek.com', {
+      message: 'BGG_BASE_URL must use boardgamegeek.com without www (the token is ignored on www)',
+    }),
 
   CORS_ORIGINS: z.string().optional(),
   HTTP_USER_AGENT: z

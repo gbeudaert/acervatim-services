@@ -37,6 +37,9 @@ Recherche externe, pivot manga, files BullMQ et cache d'API (NestJS, Prisma, Mar
 - `src/search/watch/` : rattrapage hebdomadaire des tomes manga et `GET /v1/series-updates`. Les
   series viennent de `catalog-manga`, le premium de `billing`, par leurs routes `/internal/*`
   (`catalog-client.service.ts`, `premium-client.service.ts`) - jamais par une lecture de base.
+- `src/sources/gameupc/`, `src/sources/bgg/`, `src/search/boardgame/` : code-barres de jeu de
+  societe -> BGG. `src/common/barcode/gtin.ts` normalise **avant** tout appel : GameUPC ne valide
+  rien et indexe la chaine recue. Le client BGG ne part pas sans `BGG_API_TOKEN`.
 - `src/metrics/` : `/v1/admin/queues`. Toutes les files du systeme ayant suivi ce service,
   c'est ici et nulle part ailleurs que la passerelle sortante s'observe.
 - `src/common/internal/contracts.ts` : contrat des routes `/internal/*`. **Identique dans tous

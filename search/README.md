@@ -68,6 +68,10 @@ ainsi que l'economie de quota qui permet au repli premium de tenir. Les jetons a
 `connections` ; les jobs d'import vivent dans Redis avec un identifiant derive du titre, pas du
 demandeur.
 
+Les votes GameUPC (section 7) sont la seule exception, et elle est transitoire : leur job porte le
+**pseudonyme** du votant (HMAC sous `GAMEUPC_VOTER_PEPPER`), jamais son `userId`, et disparait de
+Redis a l'envoi (sept jours s'il echoue definitivement). Rien n'est ecrit en base.
+
 La route existe pour la symetrie du contrat : `identity` interroge tous les participants
 declares, et un participant qui repondrait 404 ferait echouer une saga pour rien.
 
@@ -138,7 +142,22 @@ Deux consequences de fonctionnement :
 
 ---
 
-## 7. Demarrage
+## 7. Jeux de societe : code-barres -> BoardGameGeek
+
+`GET /v1/search/boardgame/barcode/:code` et `POST .../:code/choice`. GameUPC donne l'identifiant
+BGG d'un EAN/UPC ; le choix de l'utilisateur lui est renvoye (file `gameupc-feedback`, sous
+pseudonyme HMAC) pour que le code soit verifie pour les suivants. BGG ne sert que la fiche
+(`thing`), et **seulement si `BGG_API_TOKEN` est renseigne** - vide tant que la licence BGG
+n'est pas accordee (non commerciale d'abord, commerciale avant le premium).
+
+Le point a ne pas defaire : **`common/barcode/gtin.ts` normalise avant tout appel.** GameUPC ne
+valide rien (`abc` rend un jeu au hasard, une cle de controle fausse cree un enregistrement) et
+indexe la chaine (`019962194719` est verifie, `0019962194719` ne l'est pas). Conception, ecarts au
+Swagger et questions ouvertes : `../../../acervatim-docs/agent/backend/gameupc-bgg.md`.
+
+---
+
+## 8. Demarrage
 
 ```powershell
 cd ..                              # backend-services/
@@ -154,7 +173,7 @@ famille de cles.
 
 ---
 
-## 8. Reste a faire
+## 9. Reste a faire
 
 - **Mesurer le surcout de la resolution de jeton.** Elle etait en memoire, elle est devenue un
   appel reseau **par requete de recherche** - le seul de ce service sur le chemin chaud. Un
@@ -162,6 +181,8 @@ famille de cles.
   justifie ; personne ne l'a mesure.
 - **Recalibrer les limiters** sur les budgets reels des comptes Discogs et MAL. Les valeurs
   actuelles viennent du monolithe et n'ont jamais ete confrontees a un quota mesure.
+- **Jeux de societe** : cle de production GameUPC, ses quotas reels (2 + 1 req/s provisoires),
+  licence BGG. Liste complete dans `gameupc-bgg.md`, section 8.
 - **Cle de cache et jeton** : les cles sont partagees entre utilisateurs, y compris entre un
   appel BYOT et un appel serveur. C'est voulu (donnees publiques) mais cela signifie qu'un
   utilisateur avec sa propre cle beneficie du cache rempli par le repli premium, et

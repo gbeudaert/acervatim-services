@@ -56,6 +56,8 @@ data:
 
   # --- Sources externes -----------------------------------------------------------------
   BNF_SRU_BASE_URL: https://catalogue.bnf.fr/api/SRU
+  GAMEUPC_BASE_URL: https://api.gameupc.com/v1
+  BGG_BASE_URL: https://boardgamegeek.com/xmlapi2
   HTTP_USER_AGENT: Acervatim-Backend/1.0 (+contact@acervatim.local)
 ---
 apiVersion: v1

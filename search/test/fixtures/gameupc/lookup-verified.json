@@ -1,0 +1,35 @@
+{
+  "upc": "111111111117",
+  "name": "Splendor",
+  "searched_for": "splendor",
+  "bgg_info_status": "verified",
+  "bgg_info": [
+    {
+      "id": 148228,
+      "name": "Splendor",
+      "published": "2014",
+      "thumbnail_url": "https://cf.geekdo-images.com/vNFe4JkhKAERzi4T0Ntwpw__small/img/KKU_42Uswt4tKCpf1zY5kTzgr-g=/fit-in/200x150/filters:strip_icc()/pic8234167.png",
+      "image_url": "https://cf.geekdo-images.com/vNFe4JkhKAERzi4T0Ntwpw__original/img/rqcUdtu_N4v-SpI96XVmpYHnJww=/0x0/filters:format(png)/pic8234167.png",
+      "page_url": "https://boardgamegeek.com/boardgame/148228",
+      "data_url": "https://api.geekdo.com/xmlapi2/thing?id=148228",
+      "update_url": "https://api.gameupc.com/test/upc/111111111117/bgg_id/148228",
+      "version_status": "verified",
+      "confidence": 96,
+      "versions": [
+        {
+          "version_id": 393050,
+          "name": "Splendor (English first edition)",
+          "published": "2013",
+          "language": "English",
+          "language_id": 2184,
+          "thumbnail_url": "https://cf.geekdo-images.com/rwOMxx4q5yuElIvo-1-OFw__small/img/D4hkkHfOgu22PwgJomjplWAveuo=/fit-in/200x150/filters:strip_icc()/pic1904079.jpg",
+          "image_url": "https://cf.geekdo-images.com/rwOMxx4q5yuElIvo-1-OFw__small/img/D4hkkHfOgu22PwgJomjplWAveuo=/fit-in/200x150/filters:strip_icc()/pic1904079.jpg",
+          "update_url": "https://api.gameupc.com/test/upc/111111111117/bgg_id/148228/version/393050",
+          "confidence": 95
+        }
+      ]
+    }
+  ],
+  "stage": "test",
+  "status": "ok"
+}

@@ -1,6 +1,11 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
+import { BGG_QUEUE } from '../sources/bgg/bgg.types';
 import { BNF_QUEUE } from '../sources/bnf/bnf.types';
+import {
+  GAMEUPC_FEEDBACK_QUEUE,
+  GAMEUPC_QUEUE,
+} from '../sources/gameupc/gameupc.types';
 import { GBOOKS_QUEUE } from '../sources/googlebooks/googlebooks.types';
 import { DISCOGS_QUEUE } from '../sources/adapters/discogs.types';
 import { MAL_QUEUE } from '../sources/adapters/mal.types';
@@ -12,7 +17,7 @@ import { QueueMetricsService } from './queue-metrics.service';
 
 /**
  * Observabilite transverse des files BullMQ : agrege les compteurs de **toutes** les files
- * (d'ou l'enregistrement des sept noms ici - chaque file reste par ailleurs enregistree dans son
+ * (d'ou l'enregistrement des dix noms ici - chaque file reste par ailleurs enregistree dans son
  * module feature). `RedisHealthService` et `AdminGuard` sont fournis globalement.
  *
  * Sert `/v1/admin/queues`, qui reste dans le contrat public : le gateway y route sous
@@ -29,6 +34,9 @@ import { QueueMetricsService } from './queue-metrics.service';
       { name: TMDB_QUEUE },
       { name: EDITION_IMPORT_QUEUE },
       { name: EDITION_WATCH_QUEUE },
+      { name: GAMEUPC_QUEUE },
+      { name: GAMEUPC_FEEDBACK_QUEUE },
+      { name: BGG_QUEUE },
     ),
   ],
   controllers: [QueueMetricsController],

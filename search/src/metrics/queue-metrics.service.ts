@@ -7,7 +7,12 @@ import {
   CacheFamilyStat,
 } from '../common/cache/api-cache.service';
 import { RedisHealthService } from '../common/redis/redis-health.service';
+import { BGG_QUEUE } from '../sources/bgg/bgg.types';
 import { BNF_QUEUE } from '../sources/bnf/bnf.types';
+import {
+  GAMEUPC_FEEDBACK_QUEUE,
+  GAMEUPC_QUEUE,
+} from '../sources/gameupc/gameupc.types';
 import { GBOOKS_QUEUE } from '../sources/googlebooks/googlebooks.types';
 import { DISCOGS_QUEUE } from '../sources/adapters/discogs.types';
 import { MAL_QUEUE } from '../sources/adapters/mal.types';
@@ -64,6 +69,9 @@ export class QueueMetricsService {
     @InjectQueue(TMDB_QUEUE) tmdb: Queue,
     @InjectQueue(EDITION_IMPORT_QUEUE) editionImport: Queue,
     @InjectQueue(EDITION_WATCH_QUEUE) editionWatch: Queue,
+    @InjectQueue(GAMEUPC_QUEUE) gameUpc: Queue,
+    @InjectQueue(GAMEUPC_FEEDBACK_QUEUE) gameUpcFeedback: Queue,
+    @InjectQueue(BGG_QUEUE) bgg: Queue,
   ) {
     this.queues = [
       { name: GBOOKS_QUEUE, queue: gbooks },
@@ -74,6 +82,10 @@ export class QueueMetricsService {
       { name: EDITION_IMPORT_QUEUE, queue: editionImport },
       // Rattrapage hebdomadaire (SD3) : un passage bloqué ou en échec se voit ici, pas dans l'app.
       { name: EDITION_WATCH_QUEUE, queue: editionWatch },
+      // Jeux de société : un vote en échec définitif (refus GameUPC) se lit ici, nulle part ailleurs.
+      { name: GAMEUPC_QUEUE, queue: gameUpc },
+      { name: GAMEUPC_FEEDBACK_QUEUE, queue: gameUpcFeedback },
+      { name: BGG_QUEUE, queue: bgg },
     ];
   }
 

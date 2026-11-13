@@ -1,6 +1,8 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
 import { SourcesModule } from '../sources/sources.module';
+import { BoardGameBarcodeController } from './boardgame/boardgame-barcode.controller';
+import { BoardGameBarcodeService } from './boardgame/boardgame-barcode.service';
 import { EditionImportController } from './import/edition-import.controller';
 import { EditionImportProcessor } from './import/edition-import.processor';
 import { EditionImportService } from './import/edition-import.service';
@@ -27,6 +29,7 @@ import { SeriesUpdatesController } from './watch/series-updates.controller';
     SearchController,
     EditionImportController,
     SeriesUpdatesController,
+    BoardGameBarcodeController,
   ],
   providers: [
     SearchService,
@@ -36,6 +39,7 @@ import { SeriesUpdatesController } from './watch/series-updates.controller';
     EditionWatchProcessor,
     CatalogClientService,
     PremiumClientService,
+    BoardGameBarcodeService,
   ],
   exports: [SearchService],
 })

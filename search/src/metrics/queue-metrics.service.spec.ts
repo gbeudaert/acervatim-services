@@ -26,6 +26,9 @@ function make(available = true) {
     tmdb: makeQueue(ZERO),
     editionImport: makeQueue(ZERO),
     editionWatch: makeQueue(ZERO),
+    gameUpc: makeQueue(ZERO),
+    gameUpcFeedback: makeQueue(ZERO),
+    bgg: makeQueue(ZERO),
   };
   const svc = new QueueMetricsService(
     redisHealth as never,
@@ -37,13 +40,16 @@ function make(available = true) {
     queues.tmdb as never,
     queues.editionImport as never,
     queues.editionWatch as never,
+    queues.gameUpc as never,
+    queues.gameUpcFeedback as never,
+    queues.bgg as never,
   );
   return { svc, redisHealth, queues, apiCache };
 }
 
 describe('QueueMetricsService', () => {
   describe('snapshot', () => {
-    it('agrège les compteurs des 7 files (noms + valeurs normalisées)', async () => {
+    it('agrège les compteurs des 10 files (noms + valeurs normalisées)', async () => {
       const { svc, queues } = make();
       queues.gbooks.getJobCounts.mockResolvedValue({
         waiting: 3,
@@ -55,7 +61,7 @@ describe('QueueMetricsService', () => {
 
       const snap = await svc.snapshot();
 
-      expect(snap).toHaveLength(7);
+      expect(snap).toHaveLength(10);
       expect(snap.map((m) => m.name)).toEqual([
         'gbooks',
         'bnf',
@@ -64,6 +70,9 @@ describe('QueueMetricsService', () => {
         'tmdb',
         'edition-import',
         'edition-watch',
+        'gameupc',
+        'gameupc-feedback',
+        'bgg',
       ]);
       expect(snap[0]).toEqual({
         name: 'gbooks',

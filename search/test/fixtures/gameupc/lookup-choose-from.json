@@ -1,0 +1,140 @@
+{
+  "upc": "3664824001215",
+  "name": "Kingdomino",
+  "searched_for": "Kingdomino",
+  "bgg_info_status": "choose_from_bgg_info_or_search",
+  "bgg_info": [
+    {
+      "id": 204583,
+      "name": "Kingdomino",
+      "published": "2016",
+      "thumbnail_url": "https://cf.geekdo-images.com/c0m3gwZTcfKoLI63ASio8g__small/img/4p4Xydg0tze9UFcd6oUbCnVyxCw=/fit-in/200x150/filters:strip_icc()/pic8443569.png",
+      "image_url": "https://cf.geekdo-images.com/c0m3gwZTcfKoLI63ASio8g__original/img/HT6NQPT0cSFcZXjSewtjTO_NBAE=/0x0/filters:format(png)/pic8443569.png",
+      "page_url": "https://boardgamegeek.com/boardgame/204583",
+      "data_url": "https://api.geekdo.com/xmlapi2/thing?id=204583",
+      "update_url": "https://api.gameupc.com/test/upc/3664824001215/bgg_id/204583",
+      "version_status": "choose_from_versions",
+      "confidence": 63,
+      "versions": [
+        {
+          "version_id": 336927,
+          "name": "Kingdomino (French trial edition)",
+          "published": "2015",
+          "language": "French",
+          "language_id": 2187,
+          "thumbnail_url": "https://cf.geekdo-images.com/Vw5Ah_9oKH-bHS2TlIso5Q__small/img/16zsg0j4F492LeEOT8ue7YnuQuo=/fit-in/200x150/filters:strip_icc()/pic3305358.jpg",
+          "image_url": "https://cf.geekdo-images.com/Vw5Ah_9oKH-bHS2TlIso5Q__small/img/16zsg0j4F492LeEOT8ue7YnuQuo=/fit-in/200x150/filters:strip_icc()/pic3305358.jpg",
+          "update_url": "https://api.gameupc.com/test/upc/3664824001215/bgg_id/204583/version/336927",
+          "confidence": 0
+        },
+        {
+          "version_id": 646653,
+          "name": "Kingdomino (French edition 2016)",
+          "published": "2016",
+          "language": "French",
+          "language_id": 2187,
+          "thumbnail_url": "https://cf.geekdo-images.com/z5j2jgTeRQ8jMpmLlwDKSw__small/img/vBEYD45fJFtqIObTqQHadgJaJt8=/fit-in/200x150/filters:strip_icc()/pic4227614.jpg",
+          "image_url": "https://cf.geekdo-images.com/z5j2jgTeRQ8jMpmLlwDKSw__small/img/vBEYD45fJFtqIObTqQHadgJaJt8=/fit-in/200x150/filters:strip_icc()/pic4227614.jpg",
+          "update_url": "https://api.gameupc.com/test/upc/3664824001215/bgg_id/204583/version/646653",
+          "confidence": 0
+        },
+        {
+          "version_id": 413317,
+          "name": "Kingdomino (French second edition)",
+          "published": "2017",
+          "language": "French",
+          "language_id": 2187,
+          "thumbnail_url": "https://cf.geekdo-images.com/z5j2jgTeRQ8jMpmLlwDKSw__small/img/vBEYD45fJFtqIObTqQHadgJaJt8=/fit-in/200x150/filters:strip_icc()/pic4227614.jpg",
+          "image_url": "https://cf.geekdo-images.com/z5j2jgTeRQ8jMpmLlwDKSw__small/img/vBEYD45fJFtqIObTqQHadgJaJt8=/fit-in/200x150/filters:strip_icc()/pic4227614.jpg",
+          "update_url": "https://api.gameupc.com/test/upc/3664824001215/bgg_id/204583/version/413317",
+          "confidence": 0
+        },
+        {
+          "version_id": 727798,
+          "name": "Kingdomino (English/French edition 2025)",
+          "published": "2025",
+          "language": "English",
+          "language_id": 2184,
+          "thumbnail_url": "https://cf.geekdo-images.com/c0m3gwZTcfKoLI63ASio8g__small/img/4p4Xydg0tze9UFcd6oUbCnVyxCw=/fit-in/200x150/filters:strip_icc()/pic8443569.png",
+          "image_url": "https://cf.geekdo-images.com/c0m3gwZTcfKoLI63ASio8g__small/img/4p4Xydg0tze9UFcd6oUbCnVyxCw=/fit-in/200x150/filters:strip_icc()/pic8443569.png",
+          "update_url": "https://api.gameupc.com/test/upc/3664824001215/bgg_id/204583/version/727798",
+          "confidence": 0
+        }
+      ]
+    },
+    {
+      "id": 281960,
+      "name": "Kingdomino Duel",
+      "published": "2019",
+      "thumbnail_url": "https://cf.geekdo-images.com/Tygk_sCQEIpa7PUxsl2TmA__small/img/QNTDALrYI4_MCxyN14Z2tF2egrY=/fit-in/200x150/filters:strip_icc()/pic4783810.jpg",
+      "image_url": "https://cf.geekdo-images.com/Tygk_sCQEIpa7PUxsl2TmA__original/img/JbxNf6L8DvSJzi6SSSa9EFK8xaM=/0x0/filters:format(jpeg)/pic4783810.jpg",
+      "page_url": "https://boardgamegeek.com/boardgame/281960",
+      "data_url": "https://api.geekdo.com/xmlapi2/thing?id=281960",
+      "update_url": "https://api.gameupc.com/test/upc/3664824001215/bgg_id/281960",
+      "version_status": "choose_from_versions",
+      "confidence": 18,
+      "versions": [
+        {
+          "version_id": 460001,
+          "name": "Kingdomino Duel (English/French/Spanish-only edition)",
+          "published": "2019",
+          "language": "English",
+          "language_id": 2184,
+          "thumbnail_url": "https://cf.geekdo-images.com/Tygk_sCQEIpa7PUxsl2TmA__small/img/QNTDALrYI4_MCxyN14Z2tF2egrY=/fit-in/200x150/filters:strip_icc()/pic4783810.jpg",
+          "image_url": "https://cf.geekdo-images.com/Tygk_sCQEIpa7PUxsl2TmA__small/img/QNTDALrYI4_MCxyN14Z2tF2egrY=/fit-in/200x150/filters:strip_icc()/pic4783810.jpg",
+          "update_url": "https://api.gameupc.com/test/upc/3664824001215/bgg_id/281960/version/460001",
+          "confidence": 6
+        },
+        {
+          "version_id": 467732,
+          "name": "Kingdomino Duel (Multilingual first edition)",
+          "published": "2019",
+          "language": "Dutch",
+          "language_id": 2183,
+          "thumbnail_url": "https://cf.geekdo-images.com/Tygk_sCQEIpa7PUxsl2TmA__small/img/QNTDALrYI4_MCxyN14Z2tF2egrY=/fit-in/200x150/filters:strip_icc()/pic4783810.jpg",
+          "image_url": "https://cf.geekdo-images.com/Tygk_sCQEIpa7PUxsl2TmA__small/img/QNTDALrYI4_MCxyN14Z2tF2egrY=/fit-in/200x150/filters:strip_icc()/pic4783810.jpg",
+          "update_url": "https://api.gameupc.com/test/upc/3664824001215/bgg_id/281960/version/467732",
+          "confidence": 6
+        }
+      ]
+    },
+    {
+      "id": 240909,
+      "name": "Kingdomino: Age of Giants",
+      "published": "2018",
+      "thumbnail_url": "https://cf.geekdo-images.com/P_7077Juh647GTl3L8Oxow__small/img/BMocmB5tIBEIiWtL5LeFITN7O7g=/fit-in/200x150/filters:strip_icc()/pic4177705.png",
+      "image_url": "https://cf.geekdo-images.com/P_7077Juh647GTl3L8Oxow__original/img/jPIqdO5e4pLLo0P7_q6PzJ4jyko=/0x0/filters:format(png)/pic4177705.png",
+      "page_url": "https://boardgamegeek.com/boardgame/240909",
+      "data_url": "https://api.geekdo.com/xmlapi2/thing?id=240909",
+      "update_url": "https://api.gameupc.com/test/upc/3664824001215/bgg_id/240909",
+      "version_status": "choose_from_versions",
+      "confidence": 11,
+      "versions": [
+        {
+          "version_id": 381659,
+          "name": "Kingdomino: Age of Giants (English/French/Spanish first edition)",
+          "published": "2018",
+          "language": "English",
+          "language_id": 2184,
+          "thumbnail_url": "https://cf.geekdo-images.com/P_7077Juh647GTl3L8Oxow__small/img/BMocmB5tIBEIiWtL5LeFITN7O7g=/fit-in/200x150/filters:strip_icc()/pic4177705.png",
+          "image_url": "https://cf.geekdo-images.com/P_7077Juh647GTl3L8Oxow__small/img/BMocmB5tIBEIiWtL5LeFITN7O7g=/fit-in/200x150/filters:strip_icc()/pic4177705.png",
+          "update_url": "https://api.gameupc.com/test/upc/3664824001215/bgg_id/240909/version/381659",
+          "confidence": 4
+        },
+        {
+          "version_id": 393338,
+          "name": "Kingdomino: Age of Giants (Blue Orange English edition)",
+          "published": "2018",
+          "language": "English",
+          "language_id": 2184,
+          "thumbnail_url": "https://cf.geekdo-images.com/P_7077Juh647GTl3L8Oxow__small/img/BMocmB5tIBEIiWtL5LeFITN7O7g=/fit-in/200x150/filters:strip_icc()/pic4177705.png",
+          "image_url": "https://cf.geekdo-images.com/P_7077Juh647GTl3L8Oxow__small/img/BMocmB5tIBEIiWtL5LeFITN7O7g=/fit-in/200x150/filters:strip_icc()/pic4177705.png",
+          "update_url": "https://api.gameupc.com/test/upc/3664824001215/bgg_id/240909/version/393338",
+          "confidence": 4
+        }
+      ]
+    }
+  ],
+  "stage": "test",
+  "status": "ok"
+}

@@ -1,7 +1,9 @@
 import { BullModule } from '@nestjs/bullmq';
 import { Module } from '@nestjs/common';
+import { BggModule } from './bgg/bgg.module';
 import { BnfModule } from './bnf/bnf.module';
 import { CacheCleanupService } from './cache-cleanup.service';
+import { GameUpcModule } from './gameupc/gameupc.module';
 import { GoogleBooksModule } from './googlebooks/googlebooks.module';
 import { MangaDexModule } from './mangadex/mangadex.module';
 import { DiscogsAdapter } from './adapters/discogs.adapter';
@@ -37,6 +39,8 @@ import { TokenClientService } from './token-client.service';
     BnfModule,
     GoogleBooksModule,
     MangaDexModule,
+    GameUpcModule,
+    BggModule,
   ],
   providers: [
     TokenClientService,

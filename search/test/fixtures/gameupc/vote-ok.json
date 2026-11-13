@@ -1,0 +1,57 @@
+{
+  "upc": "3664824001215",
+  "searched_for": "kingdomino",
+  "name": "Kingdomino",
+  "bgg_info_status": "verified",
+  "bgg_info": [
+    {
+      "id": 204583,
+      "name": "Kingdomino",
+      "published": "2016",
+      "thumbnail_url": "https://cf.geekdo-images.com/c0m3gwZTcfKoLI63ASio8g__small/img/4p4Xydg0tze9UFcd6oUbCnVyxCw=/fit-in/200x150/filters:strip_icc()/pic8443569.png",
+      "image_url": "https://cf.geekdo-images.com/c0m3gwZTcfKoLI63ASio8g__original/img/HT6NQPT0cSFcZXjSewtjTO_NBAE=/0x0/filters:format(png)/pic8443569.png",
+      "versions": [
+        {
+          "name": "Kingdomino (K-Domino\\'Z)",
+          "version_id": 336927,
+          "published": "2015",
+          "thumbnail_url": "https://cf.geekdo-images.com/Vw5Ah_9oKH-bHS2TlIso5Q__small/img/16zsg0j4F492LeEOT8ue7YnuQuo=/fit-in/200x150/filters:strip_icc()/pic3305358.jpg",
+          "image_url": "https://cf.geekdo-images.com/Vw5Ah_9oKH-bHS2TlIso5Q__small/img/16zsg0j4F492LeEOT8ue7YnuQuo=/fit-in/200x150/filters:strip_icc()/pic3305358.jpg",
+          "language": "French",
+          "language_id": 2187,
+          "confidence": 0,
+          "update_url": "https://api.gameupc.com/test/upc/3664824001215/bgg_id/204583/version/336927"
+        },
+        {
+          "name": "Kingdomino (Kingdomino)",
+          "version_id": 646653,
+          "published": "2016",
+          "thumbnail_url": "https://cf.geekdo-images.com/z5j2jgTeRQ8jMpmLlwDKSw__small/img/vBEYD45fJFtqIObTqQHadgJaJt8=/fit-in/200x150/filters:strip_icc()/pic4227614.jpg",
+          "image_url": "https://cf.geekdo-images.com/z5j2jgTeRQ8jMpmLlwDKSw__small/img/vBEYD45fJFtqIObTqQHadgJaJt8=/fit-in/200x150/filters:strip_icc()/pic4227614.jpg",
+          "language": "French",
+          "language_id": 2187,
+          "confidence": 0,
+          "update_url": "https://api.gameupc.com/test/upc/3664824001215/bgg_id/204583/version/646653"
+        },
+        {
+          "name": "Kingdomino (Kingdomino)",
+          "version_id": 413317,
+          "published": "2017",
+          "thumbnail_url": "https://cf.geekdo-images.com/z5j2jgTeRQ8jMpmLlwDKSw__small/img/vBEYD45fJFtqIObTqQHadgJaJt8=/fit-in/200x150/filters:strip_icc()/pic4227614.jpg",
+          "image_url": "https://cf.geekdo-images.com/z5j2jgTeRQ8jMpmLlwDKSw__small/img/vBEYD45fJFtqIObTqQHadgJaJt8=/fit-in/200x150/filters:strip_icc()/pic4227614.jpg",
+          "language": "French",
+          "language_id": 2187,
+          "confidence": 0,
+          "update_url": "https://api.gameupc.com/test/upc/3664824001215/bgg_id/204583/version/413317"
+        }
+      ],
+      "confidence": 87,
+      "version_status": "choose_from_versions",
+      "data_url": "https://api.geekdo.com/xmlapi2/thing?id=204583",
+      "page_url": "https://boardgamegeek.com/boardgame/204583",
+      "update_url": "https://api.gameupc.com/test/upc/3664824001215/bgg_id/204583"
+    }
+  ],
+  "stage": "test",
+  "status": "ok"
+}
