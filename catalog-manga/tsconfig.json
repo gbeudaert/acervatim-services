@@ -21,7 +21,7 @@
     "esModuleInterop": true,
     "resolveJsonModule": true,
     "paths": {
-      "*": ["node_modules/*"]
+      "*": ["node_modules/*", "node_modules/@types/*"]
     }
   },
   "include": ["src/**/*", "catalog-core/src/**/*"]

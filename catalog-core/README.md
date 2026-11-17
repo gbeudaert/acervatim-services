@@ -126,15 +126,57 @@ Le CRUD est celui du monolithe. Quatre points ont bouge, tous documentes sur pla
 
 ---
 
-## 6. Reste a faire
+## 6. Tests
+
+Deux niveaux, tous deux dans cette bibliotheque, et tous deux executes **dans un catalog** :
+comme le reste du code, ils sont compiles contre le client Prisma du catalog qui les lance.
+
+**Unitaires** (`src/**/*.spec.ts`) : profils de type, `userData` d'un item, visibilite sous des
+statuts de partage et `userData` rendu a un membre, plafonds techniques. Ils tournent avec les
+tests de chaque catalog (`./scripts/dev.ps1 test <catalog>`) : la configuration Jest des catalogs
+liste `catalog-core/src` dans ses `roots`.
+
+**Integration** (`test/*.int-spec.ts`), contre une vraie base MariaDB :
+`./scripts/dev.ps1 test-int <catalog>`. La base est celle du catalog suffixee `_it`
+(`acv_cat_manga_it`...), recreee et migree a chaque execution ; le nom est verifie avant tout
+nettoyage. Le harnais (`test/harness.ts`) monte le vrai domaine - controleurs, services, gardes,
+validation Zod, client Prisma - et ne simule que ce qui vient d'ailleurs : le principal (un
+en-tete de test en clair, au lieu du principal signe du gateway) et les voisins (registre du
+gateway, snapshots de `search`). C'est elle qui execute les requetes SQL ecrites a la main :
+filtres `items[in]`/`items[all]`, `provider[in]`, statuts de partage, comptages.
+
+| Fichier | Equivalent dans le monolithe |
+|---|---|
+| `test/items.int-spec.ts` | `items/items.e2e.spec.ts` (hors gate premium), `items/items.service.spec.ts`, `nodes/nodes.service.spec.ts` |
+| `test/collections.int-spec.ts` | `collections/collections.service.spec.ts` |
+| `test/shared-read.int-spec.ts` | `sharing/shared-read.e2e.spec.ts`, partie catalog |
+| `test/internal.int-spec.ts` | routes `/internal/*` (nouvelles) et plafonds sur une vraie base |
+| `src/types/profiles.spec.ts`, `src/types/lego.spec.ts` | `collections/types/profiles.spec.ts` |
+| `src/item-user-data.schema.spec.ts` | `items/dto/item-user-data.schema.spec.ts` |
+| `src/share-filter.spec.ts` | `sharing/share-filter.service.spec.ts`, partie catalog |
+| `src/limits.service.spec.ts` | `common/limits/limits.service.spec.ts` |
+
+Ce qui a quitte les catalogs se teste ailleurs : le gate premium, la resolution d'acces et le
+refus d'un identifiant malforme dans le gateway (`principal/principal.service.spec.ts`), les
+ensembles de statuts dans `sharing` (`share-statuses.spec.ts`), le decodage du principal signe
+dans chaque service (`principal.codec.spec.ts`).
+
+Deux comportements a connaitre, fixes par les tests :
+
+- **Le catalog ne redecide pas l'acces en lecture.** Il lit le role du principal signe ; un
+  tiers est refuse (404) par le gateway, apres `sharing`. Les ecritures, elles, restent scopees
+  sur l'utilisateur ici meme (404).
+- **Un identifiant malforme rend 404 au catalog seul**, parce que le garde d'acces cherche la
+  ressource avant la validation du parametre. Le gateway rend 400 en amont, comme le monolithe.
+
+---
+
+## 7. Reste a faire
 
 - **Arbitrer les plafonds techniques (3.5).** Ils comptaient par utilisateur a travers toutes
   ses collections ; chaque catalog ne voit desormais que les siennes, donc un utilisateur
   multi-types peut atteindre jusqu'a N fois le plafond unitaire. C'est assume et documente dans
   `limits.service.ts`, mais le chiffre n'a pas ete rediscute.
-- **Tests du CRUD.** Le monolithe en avait ; ils n'ont pas ete portes, parce qu'ils s'appuyaient
-  sur `PrismaService` et les gardes du monolithe. Ils doivent revenir contre le port
-  `CATALOG_DB`, ou ils vaudront pour tous les catalogs a la fois - c'est tout l'interet.
 - **Le jour ou un type de `catalog-generic` merite un vrai profil**, il se declare dans son
   `profiles.ts` ; s'il devient assez lourd pour justifier son propre processus, il quitte ce
   fichier pour un service a lui, sans que ce CRUD bouge.

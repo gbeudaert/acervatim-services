@@ -41,6 +41,11 @@ Le CRUD collections / noeuds / items, mutualise par `catalog-generic`, `catalog-
   `../scripts/dev.ps1 link-core`. Sans elle, l'editeur ne resout pas les imports.
 - Une modification ici affecte **les quatre catalogs** : les type-checker tous avant
   de conclure (`../scripts/dev.ps1 build-ts` sans argument).
+- Tests unitaires (`src/**/*.spec.ts`) : ils tournent avec ceux de chaque catalog
+  (`../scripts/dev.ps1 test <catalog>`). Suite d'integration (`test/*.int-spec.ts`), contre la
+  base `<schema du catalog>_it`, recreee a chaque execution :
+  `../scripts/dev.ps1 test-int <catalog>`. Une modification du CRUD ou d'une requete SQL se
+  verifie par cette suite, pas seulement par les tests unitaires. Detail : README, 6.
 
 ## Conventions that differ from defaults
 
@@ -71,4 +76,9 @@ Le CRUD collections / noeuds / items, mutualise par `catalog-generic`, `catalog-
   recoit le prefixe global une seconde fois, et Express 4 lit `internal/(.*)` comme « un point,
   puis n'importe quoi » : aucun des deux ne s'appliquait, et les routes `/internal/*` - export et
   suppression RGPD compris - repondaient sans jeton. Corrige le 2026-11-02.
+- **Dans le conteneur de dev, `/app/catalog-core` est un lien symbolique** (la jonction de
+  `link-core`, montee). Jest ne suit pas les liens en cherchant les tests : d'ou les `roots` des
+  catalogs et de `test/jest-int.config.js`. TypeScript resout alors les types depuis le chemin
+  reel, hors du catalog : d'ou `node_modules/@types/*` dans les `paths` des tsconfig. Et un
+  script de test ne doit jamais partir de `__dirname` pour trouver le catalog.
 - PowerShell 5.1 : ni `&&` ni `||` (utiliser `; if ($?) { ... }`). Sources `.ps1` en ASCII pur.

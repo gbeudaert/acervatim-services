@@ -28,7 +28,8 @@ Clone de `catalog-vinyl` sur `catalog-core`, refait le 2026-11-17 (action C7). C
 ## Where things are
 
 - `src/profiles.ts` : **le seul fichier qui distingue ce service des autres catalogs.**
-- `src/profiles.spec.ts` : les tests du profil `lego`, qui vit dans `catalog-core`.
+- Les tests du profil `lego` sont avec lui, dans `catalog-core/src/types/lego.spec.ts`, et
+  tournent avec ceux de ce service ; la suite d'integration : `../scripts/dev.ps1 test-int catalog-lego`.
 - `catalog-core/` : jonction (hote) ou copie (conteneur) vers la bibliotheque partagee.
 - `src/common/` : le socle, identique a celui des autres services.
 

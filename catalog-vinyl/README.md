@@ -95,9 +95,6 @@ toute la cible.
 
 ## 5. Reste a faire
 
-- **Porter les tests du CRUD** du monolithe. Ils s'appuyaient sur son `PrismaService` et ses
-  gardes ; ils doivent revenir dans `catalog-core`, contre le port `CATALOG_DB` - ou ils
-  vaudront pour les quatre catalogs a la fois.
 - **Mesurer p95 de `GET /v1/collections/:id/items`**, l'un des deux points de non-regression
   que le 4 exige avant tout passage de palier.
 - **Arbitrer le plafond technique (3.5)** : il ne compte plus que les collections de ce

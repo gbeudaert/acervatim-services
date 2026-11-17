@@ -176,9 +176,10 @@ Rebrickable, puis `unchanged` au second passage.
 - **La saga RGPD n'a pas ete eprouvee en panne reelle.** Le 3.4 est clair : tant que le rejeu
   et l'alerte n'ont pas ete observes sur un participant eteint, ce jalon n'est pas termine.
   C'est le point a risque juridique du chantier.
-- **Les tests du CRUD catalog n'ont pas ete portes** : ils s'appuyaient sur le `PrismaService`
-  et les gardes du monolithe. Ils doivent revenir dans `catalog-core`, ou ils vaudront pour les
-  quatre catalogs a la fois.
+- **Les tests du CRUD catalog sont portes, mais n'ont tourne qu'en developpement** : unitaires
+  dans chaque catalog, et suite d'integration contre une vraie base
+  (`./scripts/dev.ps1 test-int <catalog>`, base `<schema>_it`). Detail et correspondance avec
+  les tests du monolithe : [`catalog-core`](catalog-core/README.md#6-tests).
 - **La reserve du TL;DR de l'architecture reste entiere.** Le domaine tient en ~13 000 LOC
   servies a un unique client Android ; dix processus Node/Nest representent de l'ordre de 1,1 a
   1,5 Go de RSS au repos. Le phasage etait concu pour etre **arretable a chaque palier** - ce

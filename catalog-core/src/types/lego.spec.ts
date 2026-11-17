@@ -1,8 +1,8 @@
-import { LegoItemSchema, legoProfile } from '../catalog-core/src/types/lego';
+import { LegoItemSchema, legoProfile } from './lego';
 
 /*
- * Les schemas vivent dans `catalog-core`, qui ne se teste pas seul : c'est le catalog qui sert le
- * type qui les verifie.
+ * Profil `lego`. Comme les autres tests de `catalog-core`, ce fichier ne tourne pas seul : il
+ * tourne dans chaque catalog (`roots` de leur configuration Jest), contre son client Prisma.
  */
 const ROW = {
   id: '6c1f8a8e-2f7b-4c55-9d3e-0f7f5e2b9a10',

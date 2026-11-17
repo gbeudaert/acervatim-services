@@ -82,8 +82,9 @@ cd ..                              # backend-services/
 
 ## 4. Reste a faire
 
-- Les memes points que les autres catalogs (tests du CRUD dans `catalog-core`, mesure p95,
-  plafond technique par catalog) : voir [`catalog-vinyl`](../catalog-vinyl/README.md#5-reste-a-faire).
+- Les memes points que les autres catalogs (mesure p95, plafond technique par catalog) : voir
+  [`catalog-vinyl`](../catalog-vinyl/README.md#5-reste-a-faire). Les tests du CRUD et du profil
+  `lego` sont dans `catalog-core` (son README, 6).
 - **Filtre par theme** dans `GET /v1/search?type=lego` : apres la bascule (decision du
   2026-11-17). `rebrickable-data` sait deja filtrer, mais `/v1/search` exige `q` ou `barcode`.
 - **Images** : URL Rebrickable servies telles quelles. Ce sont des images de LEGO ; leur usage
