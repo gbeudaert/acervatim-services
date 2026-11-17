@@ -1,6 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { CatalogInternalService, ProfileRegistry } from '../catalog-core/src';
 import { ConfigService } from '@nestjs/config';
+import {
+  ReadinessStatus,
+  readinessStatus,
+  withDeadline,
+} from './common/health/readiness';
 
 @Injectable()
 export class AppService {
@@ -16,7 +21,8 @@ export class AppService {
   }
 
   /**
-   * Readiness.
+   * Readiness. Base injoignable ou muette au-dela du delai : `unavailable`, que le
+   * controleur traduit en `503`.
    *
    * `registry` dit si ce catalog sait s'enregistrer aupres du gateway. Un `false` n'est pas
    * une panne - c'est le mode autonome - mais c'est **l'information la plus utile a
@@ -25,7 +31,7 @@ export class AppService {
    * diagnostiquer de toute la cible (3.3).
    */
   async ready(): Promise<{
-    status: string;
+    status: ReadinessStatus;
     db: boolean;
     types: string[];
     counts: { collections: number; nodes: number; items: number } | null;
@@ -36,12 +42,12 @@ export class AppService {
     let counts: { collections: number; nodes: number; items: number } | null =
       null;
     try {
-      counts = await this.internal.counts();
+      counts = await withDeadline(this.internal.counts());
     } catch {
       db = false;
     }
     return {
-      status: db ? 'ok' : 'degraded',
+      status: readinessStatus(db),
       db,
       types: this.profiles.codes(),
       counts,

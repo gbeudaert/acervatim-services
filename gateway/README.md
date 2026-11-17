@@ -115,7 +115,9 @@ Copy-Item .env.example .env        # puis remplir
 
 Un service aval absent n'empeche pas le gateway de demarrer : ses routes repondent `503`, les
 autres fonctionnent. C'est le mode de travail normal quand on developpe un seul service, et
-`GET /health/ready` dit qui repond.
+`GET /health/ready` dit qui repond (`reachable`) et qui est pret (`ready`) ; un service aval pas
+pret rend le statut `degraded` sans faire tomber le gateway, qui ne repond `503` que si sa
+propre base manque.
 
 ---
 

@@ -1,0 +1,81 @@
+import { Response } from 'express';
+import { AppController } from './app.controller';
+import { AppService } from './app.service';
+import { READINESS_TIMEOUT_MS } from './common/health/readiness';
+import { PrismaService } from './prisma/prisma.service';
+import { DeletionSagaService } from './saga/deletion-saga.service';
+
+/*
+ * Sondes de vie et de disponibilite. La seconde est celle de la bascule : base injoignable
+ * ou muette, elle doit repondre `503` - et jamais rester suspendue.
+ */
+
+const SAGA = { pending: 0, failed: 1, stale: 0, oldest: null, recent: [] };
+
+function make(count: () => Promise<number>) {
+  const prisma = { user: { count: jest.fn(count) } };
+  const saga = { status: jest.fn().mockResolvedValue(SAGA) };
+  const controller = new AppController(
+    new AppService(
+      prisma as unknown as PrismaService,
+      saga as unknown as DeletionSagaService,
+    ),
+  );
+  const res = { status: jest.fn() };
+  return {
+    prisma,
+    res,
+    ready: () => controller.ready(res as unknown as Response),
+    health: () => controller.health(),
+  };
+}
+
+describe('AppController - sondes', () => {
+  afterEach(() => {
+    jest.useRealTimers();
+  });
+
+  it('base joignable : 200 et statut ok', async () => {
+    const { ready, res } = make(() => Promise.resolve(3));
+    await expect(ready()).resolves.toMatchObject({
+      status: 'ok',
+      db: true,
+      users: 3,
+      saga: { pending: 0, failed: 1, stale: 0 },
+    });
+    expect(res.status).toHaveBeenCalledWith(200);
+  });
+
+  it('base injoignable : 503, le diagnostic reste dans le corps', async () => {
+    const { ready, res } = make(() =>
+      Promise.reject(new Error("Can't reach database server at db:3306")),
+    );
+    await expect(ready()).resolves.toMatchObject({
+      status: 'unavailable',
+      db: false,
+      users: null,
+      saga: null,
+    });
+    expect(res.status).toHaveBeenCalledWith(503);
+  });
+
+  it('base muette : 503 au bout du delai, la sonde ne reste pas suspendue', async () => {
+    jest.useFakeTimers();
+    const { ready, res } = make(() => new Promise<number>(() => undefined));
+    const report = ready();
+    await jest.advanceTimersByTimeAsync(READINESS_TIMEOUT_MS);
+    await expect(report).resolves.toMatchObject({
+      status: 'unavailable',
+      db: false,
+    });
+    expect(res.status).toHaveBeenCalledWith(503);
+  });
+
+  it('la sonde de vie ne sollicite pas la base', () => {
+    const { health, prisma } = make(() =>
+      Promise.reject(new Error('base arretee')),
+    );
+    expect(health()).toEqual({ status: 'ok', service: 'acervatim-identity' });
+    expect(prisma.user.count).not.toHaveBeenCalled();
+  });
+});

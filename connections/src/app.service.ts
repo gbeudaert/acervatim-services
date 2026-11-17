@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import {
+  ReadinessStatus,
+  readinessStatus,
+  withDeadline,
+} from './common/health/readiness';
 import { PrismaService } from './prisma/prisma.service';
 
 @Injectable()
@@ -15,12 +20,15 @@ export class AppService {
   }
 
   /**
-   * Readiness. `providers` dit quels flux sont reellement utilisables : un service sain dont
+   * Readiness. Base injoignable ou muette au-dela du delai : `unavailable`, que le
+   * controleur traduit en `503`.
+   *
+   * `providers` dit quels flux sont reellement utilisables : un service sain dont
    * `DISCOGS_CONSUMER_KEY` manque repond 503 sur `/v1/oauth/discogs/start`, et le decouvrir
    * au premier utilisateur plutot qu'ici serait une perte de temps evitable.
    */
   async ready(): Promise<{
-    status: string;
+    status: ReadinessStatus;
     db: boolean;
     credentials: number | null;
     providers: { discogs: boolean; mal: boolean };
@@ -28,12 +36,12 @@ export class AppService {
     let db = true;
     let credentials: number | null = null;
     try {
-      credentials = await this.prisma.oauthCredential.count();
+      credentials = await withDeadline(this.prisma.oauthCredential.count());
     } catch {
       db = false;
     }
     return {
-      status: db ? 'ok' : 'degraded',
+      status: readinessStatus(db),
       db,
       credentials,
       providers: {

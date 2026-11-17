@@ -1,5 +1,14 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { InternalClientService } from './common/internal/internal-client.service';
+import {
+  READINESS_TIMEOUT_MS,
+  ReadinessStatus,
+  readinessStatus,
+  withDeadline,
+} from './common/health/readiness';
+import {
+  InternalCallError,
+  InternalClientService,
+} from './common/internal/internal-client.service';
 import { PremiumCacheService } from './principal/premium-cache.service';
 import { PrismaService } from './prisma/prisma.service';
 import {
@@ -10,8 +19,18 @@ import {
 export interface ServiceHealth {
   service: ServiceName;
   configured: boolean;
+  /** Le service a repondu, quel que soit le code. */
   reachable: boolean;
+  /** Sa propre sonde de disponibilite a repondu `200`. */
+  ready: boolean;
 }
+
+/**
+ * Delai accorde a la sonde de disponibilite d'un service aval. Superieur a celui que ce
+ * service accorde lui-meme a sa base : un voisin dont la base se tait a le temps de repondre
+ * son `503`, et `reachable: false` signifie alors vraiment que son processus ne repond pas.
+ */
+const DOWNSTREAM_READY_TIMEOUT_MS = READINESS_TIMEOUT_MS + 1_000;
 
 /**
  * Fragment OpenAPI tel qu'un service le publie. On ne modelise que ce qu'on fusionne :
@@ -42,38 +61,60 @@ export class AppService {
   /**
    * Readiness du gateway ET de la constellation.
    *
-   * Un service aval injoignable ne rend **pas** le gateway `down` : ses routes repondront
-   * 502 ou 503, les autres continuent de fonctionner. C'est le comportement recherche - le
-   * decoupage n'a d'interet que si un adapter qui boucle ne fait pas tomber le reste (2).
-   * Le detail par service est expose pour que la panne reste diagnosticable.
+   * La base du gateway (registre de routage) est vitale : injoignable ou muette au-dela du
+   * delai, `unavailable`, que le controleur traduit en `503`.
+   *
+   * Un service aval qui n'est pas pret ne rend **pas** le gateway indisponible : ses routes
+   * repondront 502 ou 503, les autres continuent de fonctionner. C'est le comportement
+   * recherche - le decoupage n'a d'interet que si un adapter qui boucle ne fait pas tomber
+   * le reste (2). Il rend en revanche le statut `degraded`, et le detail par service est
+   * expose pour que la panne reste diagnosticable. Redis de meme : sans lui, le premium est
+   * lu chez `billing` a chaque requete, plus lentement mais exactement.
+   *
+   * Chaque service aval est interroge sur **sa** sonde de disponibilite, pas sur sa sonde de
+   * vie : un service dont la base est perdue repond encore `/health`, et c'est cet appel que
+   * la procedure de bascule consulte pour savoir si la constellation est complete.
    */
   async ready(): Promise<{
-    status: string;
+    status: ReadinessStatus;
     db: boolean;
     redis: boolean;
     registry: { collections: number; resources: number } | null;
     services: ServiceHealth[];
   }> {
-    let db = true;
-    let registry: { collections: number; resources: number } | null = null;
-    try {
-      const [collections, resources] = await Promise.all([
-        this.prisma.collectionRegistry.count(),
-        this.prisma.resourceRegistry.count(),
-      ]);
-      registry = { collections, resources };
-    } catch {
-      db = false;
-    }
-
-    const services = await this.probeServices();
+    // En parallele : la duree de la sonde est bornee par le plus long des deux delais, pas
+    // par leur somme.
+    const [registry, services] = await Promise.all([
+      this.readRegistry(),
+      this.probeServices(),
+    ]);
+    const db = registry !== null;
+    const redis = this.premium.isRedisAvailable();
     return {
-      status: db ? 'ok' : 'degraded',
+      status: readinessStatus(db, redis && services.every((s) => s.ready)),
       db,
-      redis: this.premium.isRedisAvailable(),
+      redis,
       registry,
       services,
     };
+  }
+
+  /** Compteurs du registre, ou `null` si la base n'a pas repondu dans le delai. */
+  private async readRegistry(): Promise<{
+    collections: number;
+    resources: number;
+  } | null> {
+    try {
+      const [collections, resources] = await withDeadline(
+        Promise.all([
+          this.prisma.collectionRegistry.count(),
+          this.prisma.resourceRegistry.count(),
+        ]),
+      );
+      return { collections, resources };
+    } catch {
+      return null;
+    }
   }
 
   private async probeServices(): Promise<ServiceHealth[]> {
@@ -88,17 +129,21 @@ export class AppService {
       'catalog-vinyl',
     ];
     return Promise.all(
-      names.map(async (service) => {
+      names.map(async (service): Promise<ServiceHealth> => {
         const baseUrl = this.services.find(service);
         if (!baseUrl) {
-          return { service, configured: false, reachable: false };
+          return { service, configured: false, reachable: false, ready: false };
         }
-        const res = await this.internal.tryRequest<unknown>(
-          baseUrl,
-          '/health',
-          { timeoutMs: 1_000 },
-        );
-        return { service, configured: true, reachable: res !== null };
+        try {
+          await this.internal.request<unknown>(baseUrl, '/health/ready', {
+            timeoutMs: DOWNSTREAM_READY_TIMEOUT_MS,
+          });
+          return { service, configured: true, reachable: true, ready: true };
+        } catch (err) {
+          // Un code HTTP prouve que le voisin repond : il n'est simplement pas pret.
+          const reachable = err instanceof InternalCallError;
+          return { service, configured: true, reachable, ready: false };
+        }
       }),
     );
   }

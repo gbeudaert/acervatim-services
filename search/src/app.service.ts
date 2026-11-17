@@ -1,5 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import {
+  ReadinessStatus,
+  readinessStatus,
+  withDeadline,
+} from './common/health/readiness';
 import { RedisHealthService } from './common/redis/redis-health.service';
 import { PrismaService } from './prisma/prisma.service';
 
@@ -17,19 +22,23 @@ export class AppService {
   }
 
   /**
-   * Readiness.
+   * Readiness. Base injoignable ou muette au-dela du delai : `unavailable`, que le
+   * controleur traduit en `503`.
    *
-   * Redis est ici **vital**, contrairement aux autres services : toutes les sources externes
-   * passent par une file BullMQ, et sans Redis le chemin interactif n'a plus que le cache a
-   * servir. On le declare donc `degraded`, ce qui est exact - la recherche fonctionne encore,
-   * en lecture de cache seulement.
+   * Redis pese ici plus qu'ailleurs : toutes les sources externes passent par une file
+   * BullMQ, et sans lui le chemin interactif n'a plus que le cache a servir - un appel hors
+   * cache repond `503` de lui-meme (circuit-breaker). Il reste pourtant une dependance
+   * secondaire, d'ou `degraded` (et un `200`) : le cache, `edition-mapping` (cache seul) et
+   * la route RGPD `/internal/users/:id/data` repondent sans lui, et une sonde en `503` les
+   * declarerait perdus avec le reste. L'etat de Redis vient d'un drapeau tenu par les
+   * evenements de connexion : le lire ne peut pas suspendre la sonde.
    *
    * `sources` dit lesquelles sont configurees : une source sans cle serveur ne repond qu'aux
    * utilisateurs ayant connecte la leur, et le decouvrir au premier utilisateur plutot qu'ici
    * serait une perte de temps evitable.
    */
   async ready(): Promise<{
-    status: string;
+    status: ReadinessStatus;
     db: boolean;
     redis: boolean;
     cachedEntries: number | null;
@@ -38,13 +47,13 @@ export class AppService {
     let db = true;
     let cachedEntries: number | null = null;
     try {
-      cachedEntries = await this.prisma.apiCache.count();
+      cachedEntries = await withDeadline(this.prisma.apiCache.count());
     } catch {
       db = false;
     }
     const redis = this.redisHealth.isAvailable();
     return {
-      status: db && redis ? 'ok' : 'degraded',
+      status: readinessStatus(db, redis),
       db,
       redis,
       cachedEntries,

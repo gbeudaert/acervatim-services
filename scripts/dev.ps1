@@ -140,12 +140,20 @@ function Invoke-Health {
     }
     foreach ($svc in $AllServices) {
         $uri = "http://localhost:$($ports[$svc])/health/ready"
+        # Invoke-WebRequest et non Invoke-RestMethod : un 503 de la sonde porte un corps utile
+        # (quelle dependance manque), a afficher au lieu de "INJOIGNABLE".
         try {
-            $res = Invoke-RestMethod -Method GET -Uri $uri -TimeoutSec 5
-            Write-Host ("{0,-16} {1}" -f $svc, ($res | ConvertTo-Json -Compress -Depth 6))
+            $res = Invoke-WebRequest -UseBasicParsing -Method GET -Uri $uri -TimeoutSec 5
+            Write-Host ("{0,-16} {1} {2}" -f $svc, $res.StatusCode, $res.Content)
         }
-        catch {
-            Write-Host ("{0,-16} INJOIGNABLE ({1})" -f $svc, $_.Exception.Message) -ForegroundColor Red
+        catch [System.Net.WebException] {
+            $r = $_.Exception.Response
+            if ($r) {
+                Write-Host ("{0,-16} {1} {2}" -f $svc, [int]$r.StatusCode, $_.ErrorDetails.Message) -ForegroundColor Red
+            }
+            else {
+                Write-Host ("{0,-16} INJOIGNABLE ({1})" -f $svc, $_.Exception.Message) -ForegroundColor Red
+            }
         }
     }
 }

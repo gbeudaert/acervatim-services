@@ -1,7 +1,8 @@
 # Reprise des donnees du monolithe
 
-Le monolithe tient tout dans un schema (`acervatim`) ; la constellation en a neuf, crees vides
-par `db/init` et les migrations Prisma. **Sans cette reprise, basculer le reverse proxy de 3000
+Le monolithe tient tout dans un schema (`acervatim`) ; la constellation en a dix, crees vides
+par `db/init` et les migrations Prisma (dont `acv_rebrickable`, que la reprise ne concerne pas :
+le monolithe n'a aucune donnee LEGO). **Sans cette reprise, basculer le reverse proxy de 3000
 vers 3100 servirait des bases vides** : les utilisateurs perdraient collections, premium,
 partages et liaisons aux sources externes, alors meme que l'app, elle, continuerait de marcher.
 
@@ -91,8 +92,15 @@ developpement, qui dira si les donnees de production contiennent un cas que ce s
    ```
    `all` s'arrete au premier controle KO. Une erreur pendant la repartition annule tout : il
    n'y a jamais de reprise « a moitie faite » a nettoyer.
-5. **Controle de vie** : `curl -s localhost:3100/health/ready`, puis une lecture a travers le
-   gateway sur un compte connu.
+5. **Controle de disponibilite** :
+   ```sh
+   curl -s -o ready.json -w '%{http_code}\n' localhost:3100/health/ready   # attendu : 200
+   jq -e '.status == "ok"' ready.json                                     # attendu : true
+   ```
+   `curl -s` seul rend 0 meme sur un `503` : c'est le code HTTP qui compte. `503` : la base du
+   gateway ne repond pas. `200` mais `degraded` : un service aval n'est pas pret ou Redis manque,
+   detail dans `services[]` (`reachable: true, ready: false` = processus vivant, base perdue).
+   Puis une lecture a travers le gateway sur un compte connu.
 6. **Decision, puis bascule du reverse proxy de 3000 vers 3100.**
 7. **Apres** : `reprise.sh clean` supprime `acv_legacy`. Le fichier de vidage reste dans un
    endroit protege jusqu'a la fin de la fenetre de retour, puis il est **detruit** : il contient
