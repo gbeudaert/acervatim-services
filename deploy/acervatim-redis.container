@@ -1,5 +1,6 @@
 # Redis de la constellation : backing store des files BullMQ de `search` (debit sortant borne
-# + single-flight) et du cache premium du gateway (TTL 60 s, cf. 3.6).
+# + single-flight), de la file `brickset` de `rebrickable-data` (inactive tant que
+# BRICKSET_API_KEY est absente) et du cache premium du gateway (TTL 60 s, cf. 3.6).
 #
 # Nom et volume distincts de ceux du monolithe (`acervatim-redis` / `acervatim-redis-data`),
 # pour que les deux stacks cohabitent pendant la bascule.

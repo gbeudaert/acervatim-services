@@ -35,7 +35,7 @@ App Android ──HTTPS──> gateway  (/v1/*, JWT, routage, agregation OpenAPI
 | [`catalog-vinyl`](catalog-vinyl/) | 3180 | `acv_cat_vinyl` | vinyle |
 | [`rebrickable-data`](rebrickable-data/) | 3190 | `acv_rebrickable` | Catalogue LEGO de reference (CSV Rebrickable, codes-barres Brickset) - **interne**, non route par le gateway |
 | [`catalog-core`](catalog-core/) | - | - | **Bibliotheque** : le CRUD mutualise par les trois catalogs |
-| [`catalog-lego`](catalog-lego/) | 3010 | `acv_cat_lego` | LEGO - stack autonome, anterieure a la constellation |
+| [`catalog-lego`](catalog-lego/) | 3010 | `acv_cat_lego` | LEGO - stack autonome, anterieure a la constellation. **Pas encore deploye** : a refaire avant la bascule |
 | [`deploy`](deploy/) | - | - | **Deploiement** : Quadlet Podman, manifeste Kubernetes, images de production |
 
 **Une seule instance MariaDB, un schema logique par service, aucune FK inter-schemas.** C'est
@@ -46,6 +46,16 @@ la decision actee du 7, et elle est la source de presque tout le travail decrit 
 `rebrickable-data`) et reste vide dans `catalog-lego/.env` : deux moissonneurs sur la meme cle
 se partageraient le quota de 100 appels par jour. Voir `.env.example` et
 [rebrickable-data](rebrickable-data/README.md#4-demarrage).
+
+**Perimetre du deploiement.** Dix services sont declares dans `deploy/` : tous ceux du tableau
+sauf `catalog-core` (une bibliotheque) et `catalog-lego`. `catalog-lego` n'est **pas deployable
+en l'etat** : pas d'image de production, pas de route au gateway, absent de la saga RGPD alors
+qu'il stocke des cles personnelles. Il doit etre refait sur `catalog-core`, apres une conception
+« collection LEGO » qui n'existe pas encore, et **entrer dans le deploiement avant la bascule**
+(decision du 2026-11-17). D'ici la, `rebrickable-data` est deploye mais aucun service ne le lit.
+En production, `BRICKSET_API_KEY` reste absente tant que l'accord de Brickset n'est pas obtenu.
+Detail et consequences :
+[`deploy/README.md`](deploy/README.md#8-lego--ce-qui-est-deploye-et-ce-qui-reste-a-faire-avant-la-bascule).
 
 ---
 
@@ -104,13 +114,14 @@ necessaires ; elles sont argumentees dans `common/internal/contracts.ts` :
 
 ## 4. Ce qui est identique partout, et pourquoi
 
-Trois fichiers sont **volontairement dupliques a l'identique** dans chaque service :
+Quatre fichiers sont **volontairement dupliques a l'identique** dans chaque service :
 
 | Fichier | Raison |
 |---|---|
 | `src/common/internal/contracts.ts` | C'est le `libs/contracts` de la cible. Le monorepo Nest n'existe pas encore ; en attendant, la seule discipline qui tienne est de le modifier **partout du meme coup**. |
 | `src/common/filters/problem-details.filter.ts` | Le gateway relaie le corps tel quel : l'espace de noms des URI `type` doit etre strictement le meme, y compris pour des erreurs qu'un service donne ne levera jamais. |
 | `src/common/errors/index.ts` | Le vocabulaire que le filtre ci-dessus reconnait. |
+| `src/common/health/readiness.ts` | La sonde de disponibilite doit dire la meme chose partout : `503` si la base manque ou se tait plus de 2 s, `degraded` (et `200`) pour une dependance secondaire. La bascule et le gateway la lisent de la meme facon sur chaque service. |
 
 `oauth1.ts` est duplique entre `connections` (qui signe le flux) et `search` (qui signe les
 appels) pour la meme raison de fond : l'invariant du 1 interdit une dependance directe entre
@@ -158,8 +169,9 @@ Rebrickable, puis `unchanged` au second passage.
   `migrate dev`, elles se sont appliquees sans erreur au premier `up-bg` (2026-11-02), et le
   parcours manga est passe de bout en bout a travers le gateway. Rien n'a encore tourne sous
   Podman.
-- **La bascule exige une reprise des donnees**, sinon le proxy servirait neuf schemas vides :
-  [`db/reprise/`](db/reprise/README.md). Elle a ete repetee en developpement, jamais sur un
+- **La bascule exige une reprise des donnees**, sinon le proxy servirait des schemas vides :
+  [`db/reprise/`](db/reprise/README.md) (`acv_rebrickable` excepte, qui n'a rien a reprendre et
+  se remplit par l'import des CSV). Elle a ete repetee en developpement, jamais sur un
   vidage de production - c'est cette repetition qui dira la duree de la fenetre.
 - **Aucune mesure du 4 n'a ete produite** : RSS total au repos, p95 de `GET /v1/collections` et
   de `GET /v1/collections/:id/items`, ecart du registre apres re-scan, jobs RGPD non termines.

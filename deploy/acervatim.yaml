@@ -5,9 +5,12 @@
 # `acervatim-secrets.yaml` (non versionne) :
 #   cat ~/acervatim/acervatim-secrets.yaml deploy/acervatim.yaml > ~/acervatim/acervatim.yaml
 #
-# Les neuf services partagent une pile reseau (meme pod) : ils se joignent en `localhost`,
+# Les dix services partagent une pile reseau (meme pod) : ils se joignent en `localhost`,
 # d'ou les `*_BASE_URL` ci-dessous. C'est la seule difference de configuration avec la stack de
 # developpement, ou docker-compose les separe et les fait se resoudre par nom de service.
+#
+# `catalog-lego` n'est PAS ENCORE dans ce manifeste : il doit etre refait, puis y entrer avant
+# la bascule, voir deploy/README.md (8).
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -17,9 +20,13 @@ data:
   NODE_ENV: production
 
   # --- Adressage interne ----------------------------------------------------------------
-  # `localhost` parce que les neuf conteneurs sont dans le meme pod. Un service qui sortirait
+  # `localhost` parce que les dix conteneurs sont dans le meme pod. Un service qui sortirait
   # du pod deviendrait `http://<son-conteneur>:<port>` et rejoindrait le reseau
   # `acervatim-services` - c'est la seule ligne a changer, de chaque cote.
+  #
+  # Pas de ligne pour `rebrickable-data` (localhost:3190), et c'est voulu : aucun service du
+  # pod ne l'appelle aujourd'hui, donc aucun ne lit une telle variable. Elle s'ajoutera ici en
+  # meme temps que son premier consommateur, pas avant.
   IDENTITY_BASE_URL: http://localhost:3110
   BILLING_BASE_URL: http://localhost:3120
   CONNECTIONS_BASE_URL: http://localhost:3130
@@ -40,6 +47,11 @@ data:
   # **La ligne a completer en meme temps qu'on ajoute un service qui stocke un `userId`.**
   # Un participant absent d'ici ne recoit jamais de demande de suppression, et la saga
   # reussit - silencieuse et incomplete.
+  #
+  # `rebrickable-data` n'y figure pas, a dessein : son schema (themes, sets, traces d'import,
+  # compteur de budget) ne porte aucun `userId`, et il n'expose pas `/internal/users/:id/*`.
+  # L'y inscrire laisserait, a chaque suppression de compte, un job `failed` rejoue sans fin
+  # sur une route qui n'existe pas.
   SAGA_PARTICIPANTS: >-
     billing=http://localhost:3120,connections=http://localhost:3130,sharing=http://localhost:3140,search=http://localhost:3150,catalog-generic=http://localhost:3160,catalog-manga=http://localhost:3170,catalog-vinyl=http://localhost:3180
   SAGA_ALERT_AFTER_HOURS: '24'
@@ -58,6 +70,14 @@ data:
   BNF_SRU_BASE_URL: https://catalogue.bnf.fr/api/SRU
   GAMEUPC_BASE_URL: https://api.gameupc.com/v1
   BGG_BASE_URL: https://boardgamegeek.com/xmlapi2
+  # Catalogue LEGO (`rebrickable-data`) : la page des CSV publics de Rebrickable, sans cle.
+  # Seule destination externe de ce service tant que BRICKSET_API_KEY est absente. Quatre
+  # fichiers, au premier demarrage sur un catalogue vide puis une fois par jour a 03:00 UTC,
+  # sous controle `Last-Modified`.
+  # Aucune variable `BRICKSET_*` ici ni dans le Secret : tant que l'accord de Brickset n'est
+  # pas ecrit, la cle reste absente et aucun appel ne part (cf. acervatim-secrets.example.yaml).
+  # BRICKSET_BASE_URL et BRICKSET_DAILY_CALL_BUDGET gardent leurs valeurs par defaut.
+  REBRICKABLE_DOWNLOADS_URL: https://cdn.rebrickable.com/media/downloads
   HTTP_USER_AGENT: Acervatim-Backend/1.0 (+contact@acervatim.local)
 ---
 apiVersion: v1
@@ -69,9 +89,9 @@ metadata:
 spec:
   restartPolicy: Always
 
-  # Les migrations des neuf schemas, AVANT que le moindre service ne demarre. Une image
+  # Les migrations des dix schemas, AVANT que le moindre service ne demarre. Une image
   # unique les joue en sequence (cf. deploy/migrate.sh) ; son echec empeche le pod de
-  # demarrer, ce qui est preferable a neuf services tournant sur un schema a moitie migre.
+  # demarrer, ce qui est preferable a dix services tournant sur un schema a moitie migre.
   initContainers:
     - name: migrate
       image: localhost/acervatim-migrate:0.1.0
@@ -94,7 +114,7 @@ spec:
     # ------------------------------------------------------------------ point d'entree
     - name: gateway
       image: localhost/acervatim-gateway:0.1.0
-      # **Le seul port publie sur l'hote.** Les huit autres services ne sont joignables que
+      # **Le seul port publie sur l'hote.** Les neuf autres services ne sont joignables que
       # depuis l'interieur du pod : c'est ce qui applique par construction l'invariant du 6 -
       # aucune route `/internal/*` n'est exposee vers l'exterieur.
       ports:
@@ -326,6 +346,47 @@ spec:
           memory: 160Mi
         limits:
           memory: 256Mi
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ['ALL']
+
+    # ------------------------------------------------------------------ donnees de reference
+    # Catalogue LEGO de reference (CSV publics de Rebrickable). Service INTERNE : aucun port
+    # publie, aucune route au gateway - seules `/internal/*`, `/admin/*` et `/health*` existent,
+    # joignables du pod uniquement. Aucune donnee d'utilisateur, donc absent de
+    # SAGA_PARTICIPANTS. Aucun service du pod ne l'appelle encore : cf. deploy/README.md (8).
+    - name: rebrickable-data
+      image: localhost/acervatim-rebrickable-data:0.1.0
+      env:
+        - name: PORT
+          value: '3190'
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: acervatim-secrets
+              key: DATABASE_URL_REBRICKABLE_DATA
+      envFrom:
+        - configMapRef:
+            name: acervatim-config
+        - secretRef:
+            name: acervatim-secrets
+      resources:
+        # Mesure (2026-11-16, image de production, Docker) plutot qu'estimation :
+        #  - catalogue vide : 120 a 140 Mo de RSS, 60 a 75 Mo vus par le cgroup ;
+        #  - apres l'import : ~160 Mo de RSS au repos (V8 garde son tas), ~100 Mo au cgroup ;
+        #  - pic de l'import, sur des CSV synthetiques de 40 000 sets (plus que le catalogue
+        #    reel) : 170 Mo de RSS au premier import (base vide), 186 Mo au reimport sur base
+        #    pleine (le passage de 03:00). Le cgroup en a vu 145 Mo : les pages du binaire Node,
+        #    partagees, etaient imputees a un autre cgroup - rien ne garantit cette imputation
+        #    dans le pod.
+        # D'ou des requests au niveau du repos apres import, et des limits ~130 Mi au-dessus du
+        # pic : un OOM pendant l'import de demarrage le relancerait a chaque redemarrage du
+        # conteneur, tant que `lego_sets` reste vide.
+        requests:
+          memory: 192Mi
+        limits:
+          memory: 320Mi
       securityContext:
         allowPrivilegeEscalation: false
         capabilities:

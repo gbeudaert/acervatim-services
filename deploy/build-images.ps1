@@ -1,5 +1,7 @@
 #!/usr/bin/env pwsh
-# Construit les dix images de la constellation : les neuf services + l'image de migration.
+# Construit les onze images de la constellation : les dix services + l'image de migration.
+# `catalog-lego` n'en fait pas encore partie : il n'a pas d'image de production et doit etre
+# refait avant la bascule (voir deploy/README.md, 8).
 #
 # Usage :
 #   ./deploy/build-images.ps1                      # toutes, arch de l'hote
@@ -37,6 +39,7 @@ $Images = @(
     @{ Name = 'catalog-generic'; Context = '.';           File = 'catalog-generic/Dockerfile' }
     @{ Name = 'catalog-manga';   Context = '.';           File = 'catalog-manga/Dockerfile' }
     @{ Name = 'catalog-vinyl';   Context = '.';           File = 'catalog-vinyl/Dockerfile' }
+    @{ Name = 'rebrickable-data'; Context = 'rebrickable-data'; File = 'rebrickable-data/Dockerfile' }
     @{ Name = 'migrate';         Context = '.';           File = 'deploy/Dockerfile.migrate' }
 )
 

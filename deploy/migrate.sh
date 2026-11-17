@@ -1,5 +1,5 @@
 #!/bin/sh
-# Joue `prisma migrate deploy` sur les neuf schemas de la constellation, en sequence.
+# Joue `prisma migrate deploy` sur les dix schemas de la constellation, en sequence.
 #
 # Chaque service a SON `DATABASE_URL`, pointant SON schema logique sur l'instance MariaDB
 # partagee (decision du 7 de architecture-microservices.md). Ce script ne fait donc que
@@ -7,12 +7,15 @@
 # qu'un secret de connexion soit reconstruit a deux endroits differents.
 #
 # `set -e` : la premiere migration qui echoue arrete tout. C'est voulu - en initContainer,
-# un echec empeche le pod de demarrer, ce qui est infiniment preferable a neuf services qui
+# un echec empeche le pod de demarrer, ce qui est infiniment preferable a dix services qui
 # tournent sur un schema a moitie migre.
 
 set -eu
 
-SERVICES="gateway identity billing connections sharing search catalog-generic catalog-manga catalog-vinyl"
+# `rebrickable-data` (schema `acv_rebrickable`, variable DATABASE_URL_REBRICKABLE_DATA) est le
+# dixieme. `catalog-lego` n'y figure pas encore : il doit etre refait, puis entrer dans le
+# deploiement avant la bascule (deploy/README.md, 8).
+SERVICES="gateway identity billing connections sharing search catalog-generic catalog-manga catalog-vinyl rebrickable-data"
 
 # Attente de la base. L'initContainer demarre des que le pod est ordonnance ; MariaDB tourne
 # dans un conteneur voisin (unite systemd distincte), demarre avant par `After=` - mais
@@ -49,7 +52,7 @@ for svc in $SERVICES; do
   if [ -z "$url" ]; then
     echo "migrate: $var absent - $svc ignore" >&2
     # Pas d'echec : la constellation doit pouvoir se deployer partiellement (un service
-    # retire de la configuration ne doit pas bloquer les huit autres). Un service dont les
+    # retire de la configuration ne doit pas bloquer les neuf autres). Un service dont les
     # migrations n'ont pas tourne echouera de lui-meme, bruyamment, au premier acces.
     continue
   fi

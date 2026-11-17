@@ -151,7 +151,8 @@ Sur un volume MariaDB cree avant ce service, `db/init/01-schemas.sql` n'est pas 
 - **Brancher `catalog-lego`** (lot suivant) : ses recherches par code-barres, theme et nom, son
   detail de set et sa liste de themes lisent `/internal/*` ; son index local, son moissonneur et
   son client de l'API Rebrickable disparaissent.
-- **Deploiement** : `deploy/` (Quadlet, manifeste, image de migration) ne connait pas encore ce
-  service. A declarer avant toute mise en production.
+- **Deploiement** : declare dans `deploy/` (dixieme conteneur du pod, migre par
+  `acervatim-migrate`, secret `DATABASE_URL_REBRICKABLE_DATA`), sans `BRICKSET_API_KEY` tant que
+  l'accord de Brickset n'est pas obtenu - voir `../deploy/README.md` (8).
 - **Brickset n'a pas ete eprouve contre l'API reelle** dans ce service : aucune cle n'etait
   configuree. Le client, le worker et le budget sont ceux de `catalog-lego`, portes tels quels.

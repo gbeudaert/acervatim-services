@@ -1,6 +1,6 @@
 # Contexte de build de la RACINE, utilise par les trois catalogs : leur Dockerfile a besoin
 # de `catalog-core/` en plus de leur propre dossier, donc leur contexte est backend-services/.
-# Les six autres services se construisent depuis leur propre dossier, avec leur .dockerignore.
+# Les sept autres services (dont `rebrickable-data`) se construisent depuis leur propre dossier, avec leur .dockerignore.
 
 # **La ligne qui compte.** Sur l'hote, `catalog-*/catalog-core` est une jonction vers
 # `catalog-core/` : sans cette exclusion, le contexte de build embarquerait trois copies de la

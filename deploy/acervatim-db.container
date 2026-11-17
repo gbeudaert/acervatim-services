@@ -1,6 +1,6 @@
 # MariaDB de la constellation. **Une seule instance, un schema logique par service** - c'est
-# la decision actee du 7 de architecture-microservices.md, pas une commodite : neuf bases
-# separees couteraient neuf fois l'empreinte pour des donnees qui tiennent largement dans une.
+# la decision actee du 7 de architecture-microservices.md, pas une commodite : dix bases
+# separees couteraient dix fois l'empreinte pour des donnees qui tiennent largement dans une.
 #
 # ### Pourquoi la base est ICI et non dans le pod applicatif
 #
@@ -36,7 +36,7 @@ Network=acervatim-services.network
 # L'exposer sur l'hote n'apporterait qu'une surface d'attaque - pour un diagnostic ponctuel,
 # `podman exec -it acervatim-db mariadb -u acervatim -p` suffit.
 Environment=MARIADB_USER=acervatim
-# Base d'amorce : les neuf schemas sont crees par le script d'init au premier demarrage.
+# Base d'amorce : les dix schemas sont crees par le script d'init au premier demarrage.
 Environment=MARIADB_DATABASE=acv_gateway
 EnvironmentFile=%h/acervatim/db.env
 Volume=acervatim-db-data:/var/lib/mysql

@@ -12,7 +12,7 @@
 #
 # **Ce conteneur n'execute aucune migration** : le CLI prisma est une devDependency, absente
 # de l'image runtime. Les migrations sont jouees par l'image dediee `deploy/Dockerfile.migrate`
-# - qui ne connait pas encore ce service (deploiement a declarer, cf. README).
+# - qui le migre en dixieme (cf. deploy/README.md).
 
 # ---------- Etape 1 : build (dependances completes + compilation) ----------
 FROM registry.access.redhat.com/ubi9/nodejs-24:latest AS build
