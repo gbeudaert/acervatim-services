@@ -304,18 +304,20 @@ export interface InternalSourceSnapshotResponse {
 
 /**
  * Base de reference du catalogue LEGO, servie par `rebrickable-data` : sets, themes et codes-
- * barres, alimentes par les CSV publics Rebrickable et par le moissonnage Brickset. Aucune
- * route publique, aucune donnee d'utilisateur - ce service ne participe pas a la saga RGPD.
+ * barres, alimentes par les CSV publics Rebrickable et, au scan, par Brickset. Aucune route
+ * publique, aucune donnee d'utilisateur - ce service ne participe pas a la saga RGPD.
  *
- * Toutes ces routes sont des **lectures locales** : aucune ne declenche d'appel sortant, ni
- * vers Rebrickable ni vers Brickset.
+ * Toutes ces routes sont des **lectures locales**, sauf `by-barcode` : pour un code absent du
+ * cache, elle appelle Brickset une fois (cf. {@link InternalLegoBarcodeLookup}). Aucune ne
+ * declenche d'appel vers Rebrickable.
  *
  * - `GET /internal/sets?q=&theme=&offset=&limit=` -> {@link InternalLegoSetPage}. `limit` 1 a
  *   100 (defaut 50), `offset` 0 a 100 000 (defaut 0), `q` 1 a 200 caracteres ; un parametre
  *   inconnu est un `400`. `theme` inconnu : `404`.
- * - `GET /internal/sets/by-barcode/:code` -> `{ items: InternalLegoSet[] }`, 20 au plus. `code` :
- *   6 a 20 chiffres, tirets et espaces toleres (non comptes) ; hors de ces bornes : `400`. Aucun
- *   resultat n'est un `200` a liste vide, jamais un `404`.
+ * - `GET /internal/sets/by-barcode/:code` -> {@link InternalLegoBarcodeLookup}, 20 sets au plus.
+ *   `code` : 6 a 20 chiffres, tirets et espaces toleres (non comptes) ; hors de ces bornes :
+ *   `400`. Aucun resultat n'est un `200` a liste vide, jamais un `404`. Elle peut attendre
+ *   Brickset quelques secondes : l'appelant lui laisse plus que le delai interne par defaut.
  * - `GET /internal/sets/:setNum` -> {@link InternalLegoSet}, `404` si inconnu.
  * - `GET /internal/themes?parent=` -> `{ items: InternalLegoTheme[] }` : themes de tete sans
  *   `parent`, enfants directs sinon. `parent` inconnu : `404`.
@@ -372,6 +374,34 @@ export interface InternalLegoSet {
   theme: { id: number; name: string; path: string; slug: string } | null;
   barcodes: { ean: string | null; upc: string | null };
   contributedBy: Array<'rebrickable' | 'brickset'>;
+}
+
+/**
+ * D'ou vient la reponse d'un scan, et pourquoi elle est vide :
+ *
+ * - `cache` : code connu depuis moins de 90 jours, aucun appel ;
+ * - `brickset` : code absent du cache, Brickset vient de le resoudre ;
+ * - `miss` : Brickset ne connait aucun set des CSV pour ce code (reponse recente ou marquage en
+ *   cours) - inutile de rescanner tout de suite ;
+ * - `pending` : Brickset n'a pas repondu a temps ; l'appel continue et le scan suivant le servira ;
+ * - `disabled` : pas de cle Brickset ; `exhausted` : budget du jour UTC epuise ;
+ *   `unavailable` : Brickset ou la file en erreur. Dans ces trois cas, reessayer plus tard.
+ */
+export const LEGO_BARCODE_LOOKUPS = [
+  'cache',
+  'brickset',
+  'miss',
+  'pending',
+  'disabled',
+  'exhausted',
+  'unavailable',
+] as const;
+export type LegoBarcodeLookup = (typeof LEGO_BARCODE_LOOKUPS)[number];
+
+/** `GET /internal/sets/by-barcode/:code` : les sets portant ce code, et l'issue de la recherche. */
+export interface InternalLegoBarcodeLookup {
+  items: InternalLegoSet[];
+  lookup: LegoBarcodeLookup;
 }
 
 /**

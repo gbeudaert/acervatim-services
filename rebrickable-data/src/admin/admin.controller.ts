@@ -11,10 +11,6 @@ import { SkipThrottle } from '@nestjs/throttler';
 import { ImportRun } from '@prisma/client';
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
-import {
-  BricksetHarvestService,
-  HarvestReport,
-} from '../brickset/brickset-harvest.service';
 import { BricksetService } from '../brickset/brickset.service';
 import { CatalogService } from '../catalog/catalog.service';
 import { AdminGuard } from '../common/guards/admin.guard';
@@ -40,9 +36,10 @@ export class ImportQueryDto extends createZodDto(ImportQuerySchema) {}
 
 /**
  * Exploitation. Hors prefixe `/v1` (cf. `main.ts`), protegee par `ADMIN_API_TOKEN`. Ces routes
- * existent parce que l'alimentation n'est pas observable autrement : sous quota journalier,
- * savoir ou en est la campagne Brickset est la difference entre « l'index se remplit » et
- * « l'index est bloque depuis six jours ».
+ * existent parce que l'alimentation n'est pas observable autrement : etat des imports, nombre de
+ * sets dont un code est en cache, appels Brickset consommes aujourd'hui sous le quota.
+ *
+ * Il n'y a plus de route de campagne Brickset : Brickset n'est appele qu'au scan.
  */
 @ApiExcludeController()
 @Controller('admin')
@@ -52,7 +49,6 @@ export class AdminController {
   constructor(
     private readonly catalog: CatalogService,
     private readonly importer: RebrickableCsvService,
-    private readonly harvest: BricksetHarvestService,
     private readonly brickset: BricksetService,
   ) {}
 
@@ -65,7 +61,7 @@ export class AdminController {
     const [counts, budget, runs] = await Promise.all([
       this.catalog.counts(),
       this.brickset.budgetStatus(),
-      this.harvest.lastRuns(10),
+      this.catalog.lastRuns(10),
     ]);
     return {
       counts,
@@ -83,10 +79,4 @@ export class AdminController {
     return this.importer.run({ force: query.force });
   }
 
-  /** Campagne Brickset sans attendre 03:00 UTC, dans la limite du budget du jour. */
-  @Post('harvest/brickset')
-  @HttpCode(200)
-  async harvestBrickset(): Promise<HarvestReport> {
-    return this.harvest.run();
-  }
 }

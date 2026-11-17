@@ -1,4 +1,3 @@
-import { BricksetHarvestService } from '../brickset/brickset-harvest.service';
 import { BricksetService } from '../brickset/brickset.service';
 import { CatalogService } from '../catalog/catalog.service';
 import { RebrickableCsvService } from '../import/rebrickable-csv.service';
@@ -36,10 +35,6 @@ describe('AdminController', () => {
     const importer = {
       run: jest.fn().mockResolvedValue({ state: 'done' }),
     };
-    const harvest = {
-      run: jest.fn().mockResolvedValue({ state: 'skipped' }),
-      lastRuns: jest.fn().mockResolvedValue([]),
-    };
     const catalog = {
       counts: jest.fn().mockResolvedValue({
         sets: 1,
@@ -47,6 +42,7 @@ describe('AdminController', () => {
         setsWithMinifigs: 0,
         themes: 1,
       }),
+      lastRuns: jest.fn().mockResolvedValue([]),
     };
     const brickset = {
       budgetStatus: jest.fn().mockResolvedValue({ used: 3, budget: 90 }),
@@ -55,10 +51,9 @@ describe('AdminController', () => {
     const controller = new AdminController(
       catalog as unknown as CatalogService,
       importer as unknown as RebrickableCsvService,
-      harvest as unknown as BricksetHarvestService,
       brickset as unknown as BricksetService,
     );
-    return { controller, importer, harvest };
+    return { controller, importer, catalog };
   }
 
   it.each([
@@ -75,12 +70,16 @@ describe('AdminController', () => {
   });
 
   it('status : comptes, budget du jour et 10 derniers runs', async () => {
-    const { controller, harvest } = makeController();
+    const { controller, catalog } = makeController();
     expect(await controller.status()).toEqual({
       counts: { sets: 1, setsWithBarcode: 0, setsWithMinifigs: 0, themes: 1 },
       brickset: { configured: false, used: 3, budget: 90 },
       runs: [],
     });
-    expect(harvest.lastRuns).toHaveBeenCalledWith(10);
+    expect(catalog.lastRuns).toHaveBeenCalledWith(10);
+  });
+
+  it('n expose plus de campagne Brickset', () => {
+    expect(AdminController.prototype).not.toHaveProperty('harvestBrickset');
   });
 });

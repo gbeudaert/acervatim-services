@@ -75,7 +75,7 @@ Qualite :
 Catalogue LEGO (rebrickable-data, jeton ADMIN_API_TOKEN lu dans .env) :
   lego-status          Comptes, budget Brickset du jour, 10 derniers runs
   lego-import [force]  Import des CSV Rebrickable (force : ignore Last-Modified)
-  lego-brickset        Campagne Brickset des codes-barres, dans le budget du jour
+  lego-scan <code>     Scan d'un code-barres (appelle Brickset si le code n'est pas en cache)
 
 Services : $($AllServices -join ', ')
 Ports    : gateway 3100, identity 3110, billing 3120, connections 3130,
@@ -177,13 +177,14 @@ function Get-DotEnvValue {
     return ''
 }
 
-# Appel d'une route /admin/* de rebrickable-data. Delai long : un import complet attend la fin
-# du telechargement et de l'ecriture des ~28 000 sets avant de repondre. Sur erreur HTTP, le
-# corps Problem Details (RFC 9457) est affiche tel quel : c'est lui qui dit pourquoi.
+# Appel d'une route /admin/* (ou /internal/* avec INTERNAL_SERVICE_TOKEN) de rebrickable-data.
+# Delai long : un import complet attend la fin du telechargement et de l'ecriture des ~28 000
+# sets avant de repondre. Sur erreur HTTP, le corps Problem Details (RFC 9457) est affiche tel
+# quel : c'est lui qui dit pourquoi.
 function Invoke-LegoAdmin {
-    param([string]$Method, [string]$Path)
-    $token = Get-DotEnvValue 'ADMIN_API_TOKEN'
-    if ([string]::IsNullOrWhiteSpace($token)) { throw 'ADMIN_API_TOKEN vide dans .env' }
+    param([string]$Method, [string]$Path, [string]$TokenKey = 'ADMIN_API_TOKEN')
+    $token = Get-DotEnvValue $TokenKey
+    if ([string]::IsNullOrWhiteSpace($token)) { throw "$TokenKey vide dans .env" }
     $uri = "http://localhost:$RebrickableDataPort/$Path"
     try {
         $res = Invoke-RestMethod -Method $Method -Uri $uri -TimeoutSec 900 `
@@ -254,7 +255,14 @@ switch ($Command) {
         $query = if ($Service -eq 'force') { '?force=true' } else { '' }
         Invoke-LegoAdmin 'POST' "admin/import/rebrickable$query"
     }
-    'lego-brickset' { Invoke-LegoAdmin 'POST' 'admin/harvest/brickset' }
+    'lego-scan' {
+        # Meme route que le scan de l'app : cache d'abord, Brickset une fois si le code est
+        # inconnu, dans la limite du budget du jour. Il n'y a plus de campagne Brickset.
+        if ($Service -notmatch '^[0-9]{6,20}$' -or $Rest.Count -gt 0) {
+            throw 'lego-scan attend un seul argument : le code-barres, en chiffres'
+        }
+        Invoke-LegoAdmin 'GET' "internal/sets/by-barcode/$Service" 'INTERNAL_SERVICE_TOKEN'
+    }
     default {
         Write-Host "Commande inconnue : $Command"
         Show-Help

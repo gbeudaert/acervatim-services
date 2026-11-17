@@ -3,9 +3,11 @@ import { ApiExcludeController } from '@nestjs/swagger';
 import { SkipThrottle } from '@nestjs/throttler';
 import { createZodDto } from 'nestjs-zod';
 import { z } from 'zod';
+import { BricksetLookupService } from '../brickset/brickset-lookup.service';
 import { CatalogService } from '../catalog/catalog.service';
 import { InternalGuard } from '../common/guards/internal.guard';
 import {
+  InternalLegoBarcodeLookup,
   InternalLegoSet,
   InternalLegoSetPage,
   InternalLegoTheme,
@@ -51,14 +53,18 @@ export class ThemesQueryDto extends createZodDto(ThemesQuerySchema) {}
 
 /**
  * Routes internes de rebrickable-data - jamais exposees par le gateway. Ce sont les seules
- * lectures du catalogue : toutes locales, aucune ne declenche d'import ni de moissonnage.
+ * lectures du catalogue. Toutes sont locales, sauf le scan d'un code absent du cache, qui
+ * appelle Brickset une fois (`BricksetLookupService`). Aucune ne declenche d'import.
  */
 @ApiExcludeController()
 @Controller('internal')
 @SkipThrottle()
 @UseGuards(InternalGuard)
 export class InternalController {
-  constructor(private readonly catalog: CatalogService) {}
+  constructor(
+    private readonly catalog: CatalogService,
+    private readonly barcodes: BricksetLookupService,
+  ) {}
 
   /** Recherche : numero (prefixe) ou nom (sous-chaine), filtre par theme et sa descendance. */
   @Get('sets')
@@ -66,12 +72,16 @@ export class InternalController {
     return this.catalog.searchSets(query);
   }
 
-  /** Scan : toutes les references portant ce code, 20 au plus. */
+  /**
+   * Scan : toutes les references portant ce code, 20 au plus, et l'issue de la recherche. Pour
+   * un code absent du cache, Brickset est appele une fois : la reponse peut prendre quelques
+   * secondes (`BRICKSET_SCAN_WAIT_MS`).
+   */
   @Get('sets/by-barcode/:code')
   async byBarcode(
     @Param() params: BarcodeParamsDto,
-  ): Promise<{ items: InternalLegoSet[] }> {
-    return { items: await this.catalog.findByBarcode(params.code) };
+  ): Promise<InternalLegoBarcodeLookup> {
+    return this.barcodes.lookup(params.code);
   }
 
   @Get('sets/:setNum')

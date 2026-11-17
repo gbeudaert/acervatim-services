@@ -186,7 +186,7 @@ services:
       - /app/node_modules
 
   # ---------------------------------------------------------------- donnees de reference
-  # Catalogue LEGO de reference (CSV Rebrickable, codes-barres Brickset). PAS route par le
+  # Catalogue LEGO de reference (CSV Rebrickable, codes-barres Brickset au scan). PAS route par le
   # gateway : seules `/internal/*` (voisins) et `/admin/*` (exploitation) existent. Aucune
   # donnee d'utilisateur, donc absent de SAGA_PARTICIPANTS.
   rebrickable-data:

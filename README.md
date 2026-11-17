@@ -33,7 +33,7 @@ App Android ──HTTPS──> gateway  (/v1/*, JWT, routage, agregation OpenAPI
 | [`catalog-generic`](catalog-generic/) | 3160 | `acv_cat_generic` | movie, book, game |
 | [`catalog-manga`](catalog-manga/) | 3170 | `acv_cat_manga` | manga |
 | [`catalog-vinyl`](catalog-vinyl/) | 3180 | `acv_cat_vinyl` | vinyle |
-| [`rebrickable-data`](rebrickable-data/) | 3190 | `acv_rebrickable` | Catalogue LEGO de reference (CSV Rebrickable, codes-barres Brickset) - **interne**, non route par le gateway |
+| [`rebrickable-data`](rebrickable-data/) | 3190 | `acv_rebrickable` | Catalogue LEGO de reference (CSV Rebrickable, codes-barres Brickset au scan) - **interne**, non route par le gateway |
 | [`catalog-core`](catalog-core/) | - | - | **Bibliotheque** : le CRUD mutualise par les trois catalogs |
 | [`catalog-lego`](catalog-lego/) | 3010 | `acv_cat_lego` | LEGO - stack autonome, anterieure a la constellation. **Pas encore deploye** : a refaire avant la bascule |
 | [`deploy`](deploy/) | - | - | **Deploiement** : Quadlet Podman, manifeste Kubernetes, images de production |
@@ -41,11 +41,12 @@ App Android ──HTTPS──> gateway  (/v1/*, JWT, routage, agregation OpenAPI
 **Une seule instance MariaDB, un schema logique par service, aucune FK inter-schemas.** C'est
 la decision actee du 7, et elle est la source de presque tout le travail decrit ci-dessous.
 
-**Transition LEGO.** Tant que `catalog-lego` n'est pas branche sur `rebrickable-data`,
+**Brickset, au scan seulement.** `rebrickable-data` n'appelle Brickset que pour un code scanne
+absent de son cache (decision du 2026-11-16) ; il n'y a plus de moissonnage.
 `BRICKSET_API_KEY` n'est renseignee **que** dans le `.env` de la constellation (pour
-`rebrickable-data`) et reste vide dans `catalog-lego/.env` : deux moissonneurs sur la meme cle
-se partageraient le quota de 100 appels par jour. Voir `.env.example` et
-[rebrickable-data](rebrickable-data/README.md#4-demarrage).
+`rebrickable-data`) et reste vide dans `catalog-lego/.env` : deux services sur la meme cle se
+partageraient le quota de 100 appels par jour. Voir `.env.example` et
+[rebrickable-data](rebrickable-data/README.md#22-brickset-au-scan).
 
 **Perimetre du deploiement.** Dix services sont declares dans `deploy/` : tous ceux du tableau
 sauf `catalog-core` (une bibliotheque) et `catalog-lego`. `catalog-lego` n'est **pas deployable

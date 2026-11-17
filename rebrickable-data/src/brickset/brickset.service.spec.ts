@@ -26,7 +26,7 @@ jest.mock('bullmq', () => ({
 
 const API_KEY = 'secret-brickset-key';
 const BUDGET = 90;
-const PARAMS = { pageNumber: 2, pageSize: 500, orderBy: 'Number' };
+const PARAMS = { query: '5702015869935', pageNumber: 1, pageSize: 20 };
 
 function makeConfig(overrides: Record<string, unknown> = {}): ConfigService {
   const values: Record<string, unknown> = {
@@ -95,7 +95,7 @@ describe('BricksetService.getSets', () => {
   it('n enfile que les parametres getSets : la cle API n entre pas dans Redis', async () => {
     const { service, queue } = makeService({});
 
-    await service.getSets({ ...PARAMS, updatedSince: undefined });
+    await service.getSets(PARAMS);
 
     const [, data] = queue.add.mock.calls[0];
     expect(data).toEqual({ params: PARAMS });
@@ -165,6 +165,38 @@ describe('BricksetService.getSets', () => {
     const events = (QueueEvents as unknown as jest.Mock).mock.results.at(-1)!
       .value as { on: jest.Mock };
     expect(events.on).toHaveBeenCalledWith('error', expect.any(Function));
+  });
+
+  it('deux appels simultanes : les reservations passent une a une, aucune unite perdue', async () => {
+    const { service, cache } = makeService({});
+    // Compteur partage : chaque lecture voit l'ecriture precedente seulement si les
+    // reservations sont serialisees.
+    let stored = 10;
+    cache.get.mockImplementation(async () => {
+      await new Promise((r) => setTimeout(r, 5));
+      return { count: stored };
+    });
+    cache.set.mockImplementation(async (_k: string, v: { count: number }) => {
+      stored = v.count;
+    });
+
+    await Promise.all([service.getSets(PARAMS), service.getSets(PARAMS)]);
+
+    expect(stored).toBe(12);
+  });
+
+  it('un refus de budget n empeche pas la reservation suivante', async () => {
+    const { service, cache } = makeService({});
+    cache.get
+      .mockResolvedValueOnce({ count: BUDGET })
+      .mockResolvedValueOnce({ count: 0 });
+
+    await expect(service.getSets(PARAMS)).rejects.toBeInstanceOf(
+      BricksetBudgetExhaustedError,
+    );
+    await expect(service.getSets(PARAMS)).resolves.toMatchObject({
+      status: 'success',
+    });
   });
 
   it('budgetKey : jour UTC', () => {

@@ -19,10 +19,14 @@ import {
 } from './brickset.types';
 
 const FETCH_JOB = 'fetch';
-/** Le moissonneur n'est pas interactif : il peut attendre longtemps un worker throttle. */
+/**
+ * Attente maximale d'un job. Le scan, lui, n'attend que `BRICKSET_SCAN_WAIT_MS` : au-dela, il
+ * repond sans le resultat, et c'est cette attente-ci qui laisse l'appel se terminer et remplir
+ * le cache pour le scan suivant.
+ */
 const WAIT_MS = 60_000;
 
-/** Levee quand le budget journalier est epuise. Le moissonneur s'arrete proprement et reprend demain. */
+/** Levee quand le budget journalier est epuise : plus aucun appel avant minuit UTC. */
 export class BricksetBudgetExhaustedError extends Error {
   constructor(
     readonly used: number,
@@ -32,7 +36,7 @@ export class BricksetBudgetExhaustedError extends Error {
   }
 }
 
-/** Levee quand aucune cle Brickset n'est configuree : l'index se construit sans codes-barres. */
+/** Levee quand aucune cle Brickset n'est configuree : le scan ne sert que le cache. */
 export class BricksetNotConfiguredError extends Error {
   constructor() {
     super('brickset: BRICKSET_API_KEY absent');
@@ -40,17 +44,13 @@ export class BricksetNotConfiguredError extends Error {
 }
 
 /**
- * Acces a Brickset, **exclusivement hors ligne**.
+ * Acces a Brickset, **au scan seulement**.
  *
  * Brickset est la seule source gratuite qui publie l'EAN et l'UPC d'une boite - la donnee sans
- * laquelle le scan d'un set est impossible. Mais une cle libre plafonne a 100 appels `getSets`
- * par jour, ce qui interdit categoriquement de l'interroger sur le chemin d'une requete
- * utilisateur : un seul utilisateur actif consommerait le quota de tous les autres.
- *
- * D'ou la forme retenue : on **moissonne** le catalogue par pages de 500 (le maximum autorise,
- * soit ~45 appels pour la totalite des references), on stocke EAN/UPC dans `lego_sets`, et la
- * recherche par code-barres devient une lecture locale a cout reseau nul. Le budget est compte
- * ici pour que le moissonneur s'arrete de lui-meme avant le refus d'API.
+ * laquelle le scan d'un set est impossible. Une cle libre plafonne a 100 appels `getSets` par
+ * jour : Brickset n'est donc appele que pour un code scanne absent du cache
+ * (`BricksetLookupService`, decision du 2026-11-16), un appel au plus par code, et ce service
+ * compte chaque appel pour s'arreter de lui-meme avant le refus d'API.
  */
 @Injectable()
 export class BricksetService implements OnModuleInit, OnModuleDestroy {
@@ -58,6 +58,12 @@ export class BricksetService implements OnModuleInit, OnModuleDestroy {
   private apiKey?: string;
   private dailyBudget!: number;
   private queueEvents!: QueueEvents;
+  /**
+   * File des reservations de budget. Plusieurs scans peuvent appeler `getSets` en meme temps ;
+   * le compteur est un lire-puis-ecrire dans `api_cache`, qui sous-compterait sans cette mise en
+   * file. Un seul exemplaire du service tourne : un verrou en memoire suffit.
+   */
+  private reservations: Promise<unknown> = Promise.resolve();
 
   constructor(
     private readonly config: ConfigService,
@@ -86,7 +92,7 @@ export class BricksetService implements OnModuleInit, OnModuleDestroy {
     );
     if (!this.apiKey) {
       this.logger.warn(
-        'BRICKSET_API_KEY absent : l index se construira sans codes-barres, le scan restera muet',
+        'BRICKSET_API_KEY absent : le scan ne sert que le cache, Brickset n est jamais appele',
       );
     }
   }
@@ -108,33 +114,15 @@ export class BricksetService implements OnModuleInit, OnModuleDestroy {
   }
 
   /**
-   * Une page de `getSets`. Chaque appel consomme une unite de budget - c'est la seule methode
-   * de ce service qui touche le reseau, donc le seul endroit ou compter.
+   * Un appel `getSets`. Chaque appel consomme une unite de budget - c'est la seule methode de ce
+   * service qui touche le reseau, donc le seul endroit ou compter.
    */
   async getSets(
     params: BricksetGetSetsParams,
   ): Promise<BricksetGetSetsResponse> {
     if (!this.apiKey) throw new BricksetNotConfiguredError();
 
-    // Cle calculee UNE fois : a minuit UTC, relire puis ecrire sous deux cles differentes
-    // inscrirait le compte d'hier sous la date du jour.
-    const key = budgetKey();
-    const used = await this.callsUsed(key);
-    if (used >= this.dailyBudget) {
-      throw new BricksetBudgetExhaustedError(used, this.dailyBudget);
-    }
-    // Avant de consommer : une file indisponible ne doit pas bruler une unite sans appel.
-    if (!this.redisHealth.isAvailable()) {
-      throw new ServiceUnavailableException(
-        'brickset: file indisponible (Redis)',
-      );
-    }
-
-    // Le compteur est incremente AVANT l'appel : un appel parti puis perdu (timeout, crash)
-    // a bel et bien consomme du quota cote Brickset. Sous-compter ferait depasser le plafond,
-    // ce qui coute une journee entiere de moissonnage - surcompter ne coute qu'un appel.
-    await this.setUsed(key, used + 1);
-
+    const key = await this.reserveCall();
     const body = await this.enqueueFetch<BricksetGetSetsResponse>(
       stripUndefined(params),
     );
@@ -155,15 +143,47 @@ export class BricksetService implements OnModuleInit, OnModuleDestroy {
     return body;
   }
 
+  /**
+   * Reserve une unite du budget du jour et rend la cle du compteur. Les reservations passent une
+   * a une (cf. `reservations`) ; un refus n'arrete pas les suivantes.
+   */
+  private reserveCall(): Promise<string> {
+    const next = this.reservations.then(() => this.reserveNow());
+    this.reservations = next.catch(() => undefined);
+    return next;
+  }
+
+  private async reserveNow(): Promise<string> {
+    // Cle calculee UNE fois : a minuit UTC, relire puis ecrire sous deux cles differentes
+    // inscrirait le compte d'hier sous la date du jour.
+    const key = budgetKey();
+    const used = await this.callsUsed(key);
+    if (used >= this.dailyBudget) {
+      throw new BricksetBudgetExhaustedError(used, this.dailyBudget);
+    }
+    // Avant de consommer : une file indisponible ne doit pas bruler une unite sans appel.
+    if (!this.redisHealth.isAvailable()) {
+      throw new ServiceUnavailableException(
+        'brickset: file indisponible (Redis)',
+      );
+    }
+
+    // Le compteur est incremente AVANT l'appel : un appel parti puis perdu (timeout, crash)
+    // a bel et bien consomme du quota cote Brickset. Sous-compter ferait depasser le plafond,
+    // ce qui coute le scan de tous jusqu'a minuit UTC - surcompter ne coute qu'un appel.
+    await this.setUsed(key, used + 1);
+    return key;
+  }
+
   private async callsUsed(key: string): Promise<number> {
     const row = await this.cache.get<{ count: number }>(key);
     return row?.count ?? 0;
   }
 
   /**
-   * Read-modify-write non atomique, ce qui est acceptable ici et seulement ici : le moissonneur
-   * est mono-job (`concurrency: 1` cote worker, campagne en single-flight). Si le service devait
-   * un jour moissonner en parallele, ce compteur passerait a un `INCR` Redis.
+   * Read-modify-write non atomique : les reservations sont mises en file (`reserveCall`), et le
+   * service tourne en un seul exemplaire. A plusieurs exemplaires, ce compteur passerait a un
+   * `INCR` Redis.
    */
   private async setUsed(key: string, count: number): Promise<void> {
     // TTL de 48 h : couvre le decalage entre le jour UTC et le jour de reference de Brickset
@@ -180,7 +200,8 @@ export class BricksetService implements OnModuleInit, OnModuleDestroy {
         { params },
         {
           // Pas de `jobId` derive des parametres : un jobId stable rejouerait un resultat
-          // conserve alors qu'on veut bien un appel neuf par page.
+          // conserve alors qu'on veut un appel neuf. Le partage d'un appel entre deux scans du
+          // meme code se fait en amont, dans `BricksetLookupService`.
           removeOnComplete: { age: 600, count: 200 },
           removeOnFail: true,
         },

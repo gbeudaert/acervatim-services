@@ -34,11 +34,14 @@ export interface BricksetGetSetsResponse {
   sets?: BricksetSet[];
 }
 
-/** Parametres `getSets` effectivement utilises par le moissonneur. */
+/** Parametres `getSets` effectivement utilises : la recherche d'un code scanne. */
 export interface BricksetGetSetsParams {
+  /**
+   * Terme de recherche. La documentation de Brickset ne cite que le numero, le nom, le theme et
+   * le sous-theme ; la recherche du site trouve aussi un EAN ou un UPC (verifie le 2026-11-17),
+   * et c'est sur ce comportement que repose le scan. A confirmer au premier appel reel.
+   */
+  query: string;
   pageNumber: number;
   pageSize: number;
-  /** Format attendu par Brickset : "yyyy-MM-dd". Arme la campagne incrementale. */
-  updatedSince?: string;
-  orderBy?: string;
 }

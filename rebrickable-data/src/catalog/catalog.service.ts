@@ -4,7 +4,7 @@ import {
   NotFoundException,
   OnModuleInit,
 } from '@nestjs/common';
-import { LegoSet, LegoTheme, Prisma } from '@prisma/client';
+import { ImportRun, LegoSet, LegoTheme, Prisma } from '@prisma/client';
 import { barcodeVariants } from '../brickset/barcode';
 import {
   InternalLegoSet,
@@ -30,7 +30,8 @@ export interface SetSearchQuery {
 
 /**
  * Lectures du catalogue, toutes **locales** : aucune ne declenche d'appel sortant - ni import
- * CSV, ni moissonnage Brickset. C'est ce qui permet de les servir sur le chemin d'une requete.
+ * CSV, ni Brickset. L'appel a Brickset d'un code scanne absent du cache est fait par
+ * `BricksetLookupService`, qui relit ensuite ici.
  *
  * L'arbre des themes (~500 lignes) est tenu en memoire : il est lu a chaque filtre `theme=` pour
  * en calculer la descendance. Il est recharge au boot et apres chaque import.
@@ -97,21 +98,48 @@ export class CatalogService implements OnModuleInit {
   }
 
   /**
-   * Resolution d'un code scanne. Renvoie toutes les correspondances : trancher a la place de
-   * l'utilisateur entre deux references produirait un faux silencieux.
+   * Sets portant ce code, confirme par Brickset depuis `freshSince` au moins. Renvoie toutes les
+   * correspondances : trancher a la place de l'utilisateur entre deux references produirait un
+   * faux silencieux. Un code plus ancien n'est jamais servi, meme avant la purge quotidienne.
    */
-  async findByBarcode(code: string): Promise<InternalLegoSet[]> {
+  async findByBarcode(
+    code: string,
+    freshSince: Date,
+  ): Promise<InternalLegoSet[]> {
     const variants = barcodeVariants(code);
     if (variants.length === 0) return [];
     const [themes, rows] = await Promise.all([
       this.themes(),
       this.prisma.legoSet.findMany({
-        where: { OR: [{ ean: { in: variants } }, { upc: { in: variants } }] },
+        where: {
+          OR: [{ ean: { in: variants } }, { upc: { in: variants } }],
+          barcodeCheckedAt: { gte: freshSince },
+        },
         orderBy: ORDER_BY,
         take: BARCODE_MATCH_LIMIT,
       }),
     ]);
     return rows.map((r) => toInternalSet(r, themes));
+  }
+
+  /**
+   * Efface les codes confirmes avant `before` : `ean`, `upc`, `brickset_id` et leur date. C'est
+   * ce qui tient l'engagement pris aupres de Brickset de ne garder ses codes que 90 jours.
+   */
+  async purgeExpiredBarcodes(before: Date): Promise<number> {
+    const { count } = await this.prisma.legoSet.updateMany({
+      where: { barcodeCheckedAt: { lt: before } },
+      data: { ean: null, upc: null, bricksetId: null, barcodeCheckedAt: null },
+    });
+    return count;
+  }
+
+  /** Derniers imports (et lignes de l'ancien moissonnage), pour `GET /admin/status`. */
+  async lastRuns(limit = 10): Promise<ImportRun[]> {
+    return this.prisma.importRun.findMany({
+      orderBy: { startedAt: 'desc' },
+      take: limit,
+    });
   }
 
   async getSet(setNum: string): Promise<InternalLegoSet> {

@@ -72,6 +72,7 @@ function legoSet(overrides: Partial<LegoSet> = {}): LegoSet {
     ean: null,
     upc: null,
     bricksetId: null,
+    barcodeCheckedAt: null,
     updatedAt: new Date(),
     ...overrides,
   };
@@ -87,6 +88,7 @@ function makeCatalog(rows: LegoSet[] = []) {
       findMany: jest.fn().mockResolvedValue(rows),
       findUnique: jest.fn().mockResolvedValue(rows[0] ?? null),
       count: jest.fn(),
+      updateMany: jest.fn().mockResolvedValue({ count: 2 }),
     },
   };
   const service = new CatalogService(prisma as unknown as PrismaService);
@@ -169,12 +171,18 @@ describe('CatalogService.searchSets', () => {
 });
 
 describe('CatalogService.findByBarcode', () => {
-  it('cherche toutes les variantes du code dans ean et upc, 20 au plus', async () => {
+  const FRESH_SINCE = new Date('2026-08-19T00:00:00Z');
+
+  it('cherche toutes les variantes du code dans ean et upc, codes frais seulement, 20 au plus', async () => {
     const { service, prisma } = makeCatalog([
-      legoSet({ ean: '0673419340496', bricksetId: 31000 }),
+      legoSet({
+        ean: '0673419340496',
+        bricksetId: 31000,
+        barcodeCheckedAt: new Date('2026-11-01T00:00:00Z'),
+      }),
     ]);
 
-    const items = await service.findByBarcode('0673-4193-40496');
+    const items = await service.findByBarcode('0673-4193-40496', FRESH_SINCE);
 
     expect(prisma.legoSet.findMany).toHaveBeenCalledWith({
       where: {
@@ -182,6 +190,7 @@ describe('CatalogService.findByBarcode', () => {
           { ean: { in: ['0673419340496', '673419340496'] } },
           { upc: { in: ['0673419340496', '673419340496'] } },
         ],
+        barcodeCheckedAt: { gte: FRESH_SINCE },
       },
       orderBy: [{ year: 'desc' }, { setNum: 'asc' }],
       take: 20,
@@ -191,8 +200,21 @@ describe('CatalogService.findByBarcode', () => {
 
   it('rend une liste vide sans interroger la base quand il n y a aucun chiffre', async () => {
     const { service, prisma } = makeCatalog();
-    expect(await service.findByBarcode('---')).toEqual([]);
+    expect(await service.findByBarcode('---', FRESH_SINCE)).toEqual([]);
     expect(prisma.legoSet.findMany).not.toHaveBeenCalled();
+  });
+});
+
+describe('CatalogService.purgeExpiredBarcodes', () => {
+  it('efface les quatre colonnes des codes confirmes avant la date, et rien d autre', async () => {
+    const { service, prisma } = makeCatalog();
+    const before = new Date('2026-08-19T03:00:00Z');
+
+    expect(await service.purgeExpiredBarcodes(before)).toBe(2);
+    expect(prisma.legoSet.updateMany).toHaveBeenCalledWith({
+      where: { barcodeCheckedAt: { lt: before } },
+      data: { ean: null, upc: null, bricksetId: null, barcodeCheckedAt: null },
+    });
   });
 });
 

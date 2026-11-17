@@ -2,8 +2,8 @@
 
 Base de reference du catalogue LEGO : sets, themes, figurines et codes-barres.
 
-- **Perimetre** : import quotidien des CSV publics Rebrickable, moissonnage Brickset des
-  codes-barres, lectures `/internal/*` pour les services voisins.
+- **Perimetre** : import quotidien des CSV publics Rebrickable, codes-barres Brickset demandes
+  au scan, lectures `/internal/*` pour les services voisins.
 - **Schema SQL** : `acv_rebrickable` · **Port** : 3190
 - **Expose** : `/internal/*` (jeton interne), `/admin/*` (jeton admin), `/health*`. **Pas de
   route `/v1/*`, pas de routage gateway.**
@@ -19,7 +19,9 @@ problemes : la documentation de l'API renvoie aux CSV pour un catalogue complet,
 qui soit **la** reference des sets, au lieu d'un index rempli au fil des recherches.
 
 `rebrickable-data` est cette base. Il ne connait aucun utilisateur et ne repond qu'a ses voisins.
-Le branchement de `catalog-lego` sur ses routes `/internal/*` est le lot suivant.
+Son consommateur sera `search`, par un adapter `rebrickable` (action C7 du plan, conception
+F10) : la recherche LEGO de l'app passera par `GET /v1/search?type=lego`, sans appel externe
+depuis `search`.
 
 ---
 
@@ -27,19 +29,21 @@ Le branchement de `catalog-lego` sur ses routes `/internal/*` est le lot suivant
 
 | | CSV Rebrickable | Brickset |
 |---|---|---|
-| Donnees | sets, themes, inventaires, figurines | `ean`, `upc`, `brickset_id` **uniquement** |
+| Donnees | sets, themes, inventaires, figurines | `ean`, `upc`, `brickset_id`, `barcode_checked_at` **uniquement** |
 | Acces | `cdn.rebrickable.com/media/downloads/`, sans cle | `getSets`, cle `BRICKSET_API_KEY` |
 | Contrainte | au plus une fois par jour (CGU) | 100 appels par jour UTC sur une cle libre |
-| Declenchement | passage quotidien, `POST /admin/import/rebrickable` | meme passage, juste apres, `POST /admin/harvest/brickset` |
-| Garde | `Last-Modified` de `sets.csv.gz` | budget du jour UTC dans `api_cache` |
+| Declenchement | passage quotidien, `POST /admin/import/rebrickable` | scan d'un code absent du cache (`GET /internal/sets/by-barcode/:code`) |
+| Garde | `Last-Modified` de `sets.csv.gz` | codes gardes 90 jours, codes inconnus 7 jours, budget du jour UTC |
 
-**Un seul cron, 03:00 UTC** (fuseau fixe, pas celui de l'hote) : import des CSV **puis** campagne
-Brickset, la seconde meme si l'import est `unchanged` ou `failed`. Au demarrage, un catalogue vide
-declenche le meme enchainement en tache de fond (jamais sous `NODE_ENV=test`).
+**Un seul cron, 03:00 UTC** (fuseau fixe, pas celui de l'hote) : import des CSV, purge du cache,
+**puis** effacement des codes-barres confirmes il y a plus de 90 jours, chaque etape meme si la
+precedente a echoue. **Aucun appel a Brickset dans ce passage** : il n'y a plus de moissonnage
+(retire le 2026-11-17). Au demarrage, un catalogue vide declenche le meme enchainement en tache
+de fond (jamais sous `NODE_ENV=test`).
 
 Les deux ecrivent `lego_sets`, mais **jamais les memes colonnes** : l'import ne cite ni `ean` ni
-`upc` ni `brickset_id`, le moissonnage ne cite qu'eux. Aucune des deux sources ne peut defaire le
-travail de l'autre.
+`upc` ni `brickset_id` ni `barcode_checked_at`, la recherche au scan ne cite qu'eux. Aucune des
+deux sources ne peut defaire le travail de l'autre.
 
 ### 2.1 L'import CSV
 
@@ -65,31 +69,50 @@ figurines passeraient a `NULL` sous un run `done`. Un set absent du CSV n'est **
 `minifigs` ne compte que l'inventaire **propre** du set : les sets imbriques
 (`inventory_sets` - packs, coffrets) ne sont pas suivis, un coffret vaut donc souvent `0`.
 
-### 2.2 La campagne Brickset
+### 2.2 Brickset au scan
 
-Pages de 500 (~45 appels pour le catalogue), une ecriture par set dont un code change :
+Decision du 2026-11-16 : Brickset n'est appele qu'au scan d'un code absent du cache. C'est ce
+que decrit le courrier de demande d'accord a Brickset (`pending`).
 
-- **mise a jour seule** : un set inconnu n'est pas cree, il est compte dans `unmatched`. Le
-  rapprochement ignore la casse (`COMCON001` trouve `comcon001-1`) ;
-- un code vide est ignore - il n'efface jamais un code connu. Un GTIN-14 a zero de tete est
-  stocke sur ses 13 chiffres, la forme qu'un scan retrouve ;
-- une meme reference deux fois dans une page (variante `0` ramenee a `1`) n'est ecrite et
-  comptee qu'une fois ;
-- budget du jour atteint - ou refus `API limit exceeded` de Brickset, qui sature le compteur du
-  jour : run `paused`. La campagne suivante **relit la derniere page consommee** puis continue
-  (un set insere entre-temps decalerait les pages ; un appel de recouvrement vaut mieux qu'un
-  trou), avec le meme mode et la meme borne haute, et passe l'ancien run a `superseded` ;
-- premiere campagne `full`, puis `incremental` avec `updatedSince` = filigrane du **dernier
-  `done`, tout mode confondu**.
+1. Un set des CSV porte ce code, confirme depuis moins de `BRICKSET_BARCODE_TTL_DAYS` (90) :
+   il est servi, sans appel. `lookup: 'cache'`.
+2. Le code est marque inconnu depuis moins de `BRICKSET_MISS_TTL_DAYS` (7) : liste vide, sans
+   appel. `lookup: 'miss'`. Les 7 jours sont un choix valide le 2026-11-17 : un set neuf obtient
+   vite son code chez Brickset, 90 jours bloqueraient son scan trois mois, et un delai plus court
+   userait le budget du jour en scans repetes d'un code inconnu.
+3. Pas de cle : `disabled`. Sinon **un** appel `getSets {query: code}`, par la file `brickset`
+   (`concurrency: 1`, un appel toutes les 2 s, une tentative), compte avant l'envoi dans le
+   budget du jour (`BRICKSET_DAILY_CALL_BUDGET`, 90 sur les 100 du quota). Budget atteint, ou
+   refus `API limit exceeded` qui sature le compteur du jour : `exhausted`. Brickset ou la file
+   en erreur : `unavailable`.
+4. Seules les fiches qui **portent le code** (EAN ou UPC, avec l'equivalence UPC-A / EAN-13 a
+   zero de tete) comptent : `query` cherche aussi dans les numeros et les noms. Pour chacune dont
+   le set existe dans les CSV, `ean`, `upc` et `brickset_id` sont ecrits (jamais effaces par une
+   valeur vide) et `barcode_checked_at` passe a maintenant, meme si les codes n'ont pas change.
+   Aucun set n'est cree. `lookup: 'brickset'`. Rien d'annote : le code est marque inconnu,
+   `lookup: 'miss'`.
+
+Le code est cherche sous sa forme la plus courte : un EAN-13 a zero de tete est un UPC-A, et
+Brickset le publie sur 12 chiffres. Deux scans simultanes du meme code partagent le meme appel
+(single-flight en memoire, par code). Le scan n'attend Brickset que `BRICKSET_SCAN_WAIT_MS`
+(6 s) : au-dela il rend `pending`, et l'appel, qui continue, sert le scan suivant. Une erreur ne
+marque jamais un code inconnu.
+
+**Les 90 jours sont un engagement.** Un code confirme il y a plus de 90 jours n'est plus servi,
+et le passage quotidien efface ses quatre colonnes. La migration du 2026-11-17 a efface les codes
+sans date, ecrits par l'ancien moissonnage.
+
+**Hypothese a verifier au premier appel reel** : la documentation de l'API ne dit pas que
+`query` cherche dans les codes-barres (seulement numero, nom, theme et sous-theme). La recherche
+du site, elle, le fait : le 2026-11-17, `brickset.com/sets?query=5702015869935` (EAN) et
+`?query=673419267656` (UPC) rendent tous deux `75192-1`. Si l'API ne le fait pas, chaque scan
+rendra `miss` ; la question est posee dans le courrier a Brickset.
 
 Le quota est compte au plus juste : une unite par appel, comptee **avant** l'envoi, jamais
 consommee si Redis (la file) est indisponible, et **une seule tentative HTTP par appel** - une
-nouvelle tentative du client serait un appel reel invisible du compteur. La cle API n'entre pas
-dans Redis : le job ne porte que les parametres `getSets`, le worker ajoute la cle.
-
-Deux corrections par rapport au moissonneur de `catalog-lego` : il lisait le filigrane sur le
-dernier `full` (l'incremental redemandait donc tout depuis la premiere campagne), et ne
-cloturait jamais les runs en pause ou en echec.
+nouvelle tentative du client serait un appel reel invisible du compteur. Les reservations du
+budget passent une a une : plusieurs scans concurrents ne peuvent pas sous-compter. La cle API
+n'entre pas dans Redis : le job ne porte que les parametres `getSets`, le worker ajoute la cle.
 
 ---
 
@@ -98,12 +121,11 @@ cloturait jamais les runs en pause ou en echec.
 | Route | Garde | Reponse |
 |---|---|---|
 | `GET /internal/sets?q&theme&offset&limit` | interne | `InternalLegoSetPage` (`limit` 1-100, defaut 50 ; `offset` 0-100 000) |
-| `GET /internal/sets/by-barcode/:code` | interne | `{ items: InternalLegoSet[] }`, 20 au plus ; `400` hors 6-20 chiffres |
+| `GET /internal/sets/by-barcode/:code` | interne | `InternalLegoBarcodeLookup` (`items`, 20 au plus, et `lookup`) ; `400` hors 6-20 chiffres ; peut attendre Brickset 6 s |
 | `GET /internal/sets/:setNum` | interne | `InternalLegoSet`, `404` si inconnu |
 | `GET /internal/themes?parent` | interne | `{ items: InternalLegoTheme[] }`, `404` si `parent` inconnu |
-| `GET /admin/status` | admin | comptes, sets avec code-barres, budget Brickset, 10 derniers runs |
+| `GET /admin/status` | admin | comptes, sets avec code-barres en cache, budget Brickset du jour, 10 derniers runs |
 | `POST /admin/import/rebrickable?force` | admin | rapport d'import (`?force`, `=true`, `=1`, casse indifferente) |
-| `POST /admin/harvest/brickset` | admin | rapport de campagne |
 
 - `q` : le numero **commence par** la valeur, ou le nom la **contient**, sans tenir compte de la
   casse. Tri `year desc, setNum asc` (index dedie). Un parametre inconnu est un `400`.
@@ -111,7 +133,7 @@ cloturait jamais les runs en pause ou en echec.
   Slug inconnu ou theme retire : `404`. Un slug n'est **pas** un identifiant stable (un
   renommage Rebrickable peut le deplacer) : pour memoriser un theme, garder son `id`.
 - `by-barcode` : EAN-13 ou UPC-A, avec ou sans tirets. Un UPC-A est un EAN-13 sans son zero de
-  tete : les deux formes sont cherchees.
+  tete : les deux formes sont cherchees. Seule route qui peut appeler Brickset (2.2).
 - `contributedBy` vaut `['rebrickable']`, plus `'brickset'` si `bricksetId` est renseigne. Il
   se deduit des donnees ; il n'y a plus de colonne `sources`.
 
@@ -124,22 +146,24 @@ Les formes sont dans `src/common/internal/contracts.ts`, section `rebrickable-da
 ```powershell
 cd ..                                   # backend-services/
 ./scripts/dev.ps1 build rebrickable-data
-./scripts/dev.ps1 up-one rebrickable-data   # base vide : import + campagne en tache de fond
+./scripts/dev.ps1 up-one rebrickable-data   # base vide : import en tache de fond
 ./scripts/dev.ps1 lego-status
 ./scripts/dev.ps1 lego-import               # `unchanged` si les CSV n'ont pas bouge
 ./scripts/dev.ps1 lego-import force         # reimport complet, ~2 s
+./scripts/dev.ps1 lego-scan 5702015869935   # scan, comme l'app : cache, puis Brickset une fois
 ```
 
-`lego-*` lit `ADMIN_API_TOKEN` dans `backend-services/.env`, quel que soit le repertoire courant,
-et affiche le corps Problem Details en cas d'erreur HTTP.
+`lego-*` lit `ADMIN_API_TOKEN` (`lego-scan` : `INTERNAL_SERVICE_TOKEN`) dans
+`backend-services/.env`, quel que soit le repertoire courant, et affiche le corps Problem
+Details en cas d'erreur HTTP.
 
-Sans `BRICKSET_API_KEY`, `lego-brickset` rend `skipped` : le catalogue est complet, sans
+Sans `BRICKSET_API_KEY`, `lego-scan` rend `lookup: 'disabled'` : le catalogue est complet, sans
 codes-barres.
 
-**Transition.** Tant que `catalog-lego` n'est pas branche sur ce service, `BRICKSET_API_KEY`
-n'est renseignee **que** dans le `.env` de la constellation, et laissee vide dans
-`catalog-lego/.env` : deux moissonneurs sur la meme cle se partageraient le quota du jour, et
-chacun croirait disposer de tout.
+`BRICKSET_API_KEY` n'est renseignee **que** dans le `.env` de la constellation, et laissee vide
+dans `catalog-lego/.env` : deux services sur la meme cle se partageraient le quota du jour, et
+chacun croirait disposer de tout. Le `catalog-lego` actuel sera remplace par un clone de
+`catalog-vinyl` sans aucun acces a Brickset (action C7).
 
 Sur un volume MariaDB cree avant ce service, `db/init/01-schemas.sql` n'est pas rejoue : c'est
 `prisma migrate deploy`, au demarrage du conteneur, qui cree `acv_rebrickable`.
@@ -148,11 +172,12 @@ Sur un volume MariaDB cree avant ce service, `db/init/01-schemas.sql` n'est pas 
 
 ## 5. Reste a faire
 
-- **Brancher `catalog-lego`** (lot suivant) : ses recherches par code-barres, theme et nom, son
-  detail de set et sa liste de themes lisent `/internal/*` ; son index local, son moissonneur et
-  son client de l'API Rebrickable disparaissent.
+- **Brancher `search`** (action C7) : un adapter `rebrickable` lit `/internal/sets`,
+  `/internal/sets/by-barcode/:code` (en laissant 8 s a cette route) et `/internal/sets/:setNum`,
+  pour servir `GET /v1/search?type=lego` ; `REBRICKABLE_DATA_BASE_URL` s'ajoute alors au
+  ConfigMap.
 - **Deploiement** : declare dans `deploy/` (dixieme conteneur du pod, migre par
   `acervatim-migrate`, secret `DATABASE_URL_REBRICKABLE_DATA`), sans `BRICKSET_API_KEY` tant que
-  l'accord de Brickset n'est pas obtenu - voir `../deploy/README.md` (8).
-- **Brickset n'a pas ete eprouve contre l'API reelle** dans ce service : aucune cle n'etait
-  configuree. Le client, le worker et le budget sont ceux de `catalog-lego`, portes tels quels.
+  l'accord de Brickset est `pending` - voir `../deploy/README.md` (8).
+- **Brickset n'a jamais ete eprouve contre l'API reelle** : aucune cle n'est configuree. Le
+  premier appel verifiera aussi que `query` trouve un set par son code-barres (2.2).

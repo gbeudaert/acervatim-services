@@ -261,10 +261,12 @@ developpement amd64, dans un projet compose jetable dont le reseau n'a aucune so
   docker -Only rebrickable-data,migrate`, sous PowerShell 5.1) ;
 - `migrate.sh`, avec les dix `DATABASE_URL_*` du gabarit, sur une MariaDB 10.11 vierge
   initialisee par `db/init` : dix schemas migres, dont `acv_rebrickable` (2 migrations, 4
-  tables), puis un second passage sans migration en attente ;
+  tables ; une troisieme, du 2026-11-17, ajoute la date des codes-barres), puis un second
+  passage sans migration en attente ;
 - le conteneur, avec l'environnement que le pod lui donne (ConfigMap + Secret du gabarit, puis
   `PORT` et `DATABASE_URL`) : `/health` et `/health/ready` en `200`, import en `failed` faute
-  de reseau, campagne Brickset `skipped`, `BRICKSET_API_KEY absent` au journal ;
+  de reseau, campagne Brickset `skipped` (le moissonnage a ete retire le 2026-11-17 : Brickset
+  n'est plus appele qu'au scan), `BRICKSET_API_KEY absent` au journal ;
 - `acervatim.yaml` et le gabarit de secrets se lisent comme du YAML (seuls et concatenes), et
   chaque `secretKeyRef` du Pod a sa cle dans le gabarit.
 
@@ -317,17 +319,20 @@ podman exec acervatim-rebrickable-data node -e "fetch('http://localhost:3190/adm
   { method: 'POST', headers: { Authorization: 'Bearer ' + process.env.ADMIN_API_TOKEN } }).then(r => r.text()).then(console.log)"
 ```
 
-**Brickset : pas de cle.** L'accord de Brickset pour l'usage de ses codes-barres n'est pas
-obtenu ; `BRICKSET_API_KEY` est donc **absente du Secret, a dessein**. Sans elle, le service
+**Brickset : pas de cle.** L'accord de Brickset pour l'usage de ses codes-barres est
+`pending` ; `BRICKSET_API_KEY` est donc **absente du Secret, a dessein**. Sans elle, le service
 sert le catalogue sans EAN/UPC, n'appelle jamais Brickset, le journalise
-(`BRICKSET_API_KEY absent`) et rend `"brickset": false` sur `/health/ready`. Le jour ou
-l'accord est ecrit : ajouter la cle au Secret, regenerer le manifeste joue (3, etape 5),
-redemarrer le pod. `catalog-lego` n'etant pas deploye, `rebrickable-data` sera son seul
-moissonneur : la question du quota partage entre deux moissonneurs (README racine) ne se pose
-pas en production.
+(`BRICKSET_API_KEY absent`), rend `"brickset": false` sur `/health/ready`, et un scan rend
+`lookup: 'disabled'`. Le jour ou l'accord est ecrit : ajouter la cle au Secret, regenerer le
+manifeste joue (3, etape 5), redemarrer le pod. Brickset ne sera alors appele qu'au scan d'un
+code absent du cache, un appel au plus par code et 90 par jour UTC ; les codes sont gardes
+90 jours puis effaces par le passage quotidien, et un code que Brickset ne connait pas est
+redemande apres 7 jours. Il n'y a plus de moissonnage, et
+`rebrickable-data` est le seul service qui recoit cette cle.
 
-**Saga RGPD : non participant, et c'est juste.** Son schema (`api_cache` - le seul compteur
-de budget Brickset -, `lego_themes`, `lego_sets`, `import_runs`) ne porte aucun `userId`, et il
+**Saga RGPD : non participant, et c'est juste.** Son schema (`api_cache` - le compteur de
+budget Brickset et les codes inconnus, sans trace de qui a scanne -, `lego_themes`,
+`lego_sets`, `import_runs`) ne porte aucun `userId`, et il
 n'expose pas `/internal/users/:id/*`. L'inscrire dans `SAGA_PARTICIPANTS` laisserait a chaque
 suppression de compte un job `failed`, rejoue toutes les 15 minutes sur une route qui n'existe
 pas.

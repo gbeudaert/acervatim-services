@@ -19,7 +19,8 @@ datasource db {
 }
 
 /// Cache generique (meme contrat que dans `search`). Ici, il ne porte que le compteur du
-/// budget Brickset du jour (`brickset:budget:YYYY-MM-DD`).
+/// budget Brickset du jour (`brickset:budget:YYYY-MM-DD`) et les codes que Brickset ne connait
+/// pas (`brickset:miss:<code>`, `BRICKSET_MISS_TTL_DAYS`).
 model ApiCache {
   cacheKey  String   @id @map("cache_key") @db.VarChar(255)
   payload   Json
@@ -52,8 +53,9 @@ model LegoTheme {
   @@map("lego_themes")
 }
 
-/// Un set LEGO. L'import CSV ecrit tout **sauf** `ean`, `upc` et `brickset_id`, que seul le
-/// moissonnage Brickset ecrit - et lui n'ecrit que ces trois colonnes.
+/// Un set LEGO. L'import CSV ecrit tout **sauf** `ean`, `upc`, `brickset_id` et
+/// `barcode_checked_at`, que seule la recherche d'un code scanne ecrit - et elle n'ecrit que ces
+/// quatre colonnes.
 ///
 /// Pas de colonne `sources` : `contributedBy` se deduit des donnees (`brickset` si
 /// `bricksetId` est renseigne). Une colonne libre derivait (bug `sources='brickset'` de
@@ -74,28 +76,34 @@ model LegoSet {
   ean        String?  @db.VarChar(14)
   /// UPC-A nord-americain (Brickset).
   upc        String?  @db.VarChar(14)
-  /// Identifiant Brickset, garde pour rejouer un rapprochement sans re-moissonner.
+  /// Identifiant Brickset du set.
   bricksetId Int?     @map("brickset_id")
+  /// Date de l'appel Brickset qui a confirme ces codes. Passe `BRICKSET_BARCODE_TTL_DAYS`
+  /// (90 jours, engagement pris aupres de Brickset), le passage quotidien efface `ean`, `upc`,
+  /// `brickset_id` et cette date ; d'ici la, un code plus vieux n'est deja plus servi.
+  barcodeCheckedAt DateTime? @map("barcode_checked_at")
   /// Ne bouge que si une valeur change (l'import CSV compare avant d'ecrire).
   updatedAt  DateTime @updatedAt @map("updated_at")
 
   @@index([ean])
   @@index([upc])
   @@index([themeId])
+  @@index([barcodeCheckedAt])
   /// Tri de toutes les listes : `year desc, setNum asc`. Pas d'index sur `name` : la recherche
   /// est un `LIKE '%...%'`, qu'aucun index B-tree ne sert.
   @@index([year(sort: Desc), setNum])
   @@map("lego_sets")
 }
 
-/// Trace d'un import CSV Rebrickable ou d'une campagne Brickset.
+/// Trace d'un import CSV Rebrickable.
 ///
-/// - `source` : `rebrickable` | `brickset`.
-/// - `mode` : `full` | `forced` (CSV) ; `full` | `incremental` (Brickset).
-/// - `state` : `running` | `done` | `unchanged` | `failed` | `paused` | `superseded`.
-/// - `watermark` : CSV, `Last-Modified` de `sets.csv.gz` importe ; Brickset, borne haute figee
-///   avant le premier appel, lue par la campagne incrementale suivante sur le dernier `done`.
-/// - `lastPage` : Brickset, derniere page consommee - la reprise part de la suivante.
+/// - `source` : `rebrickable`. Les lignes `brickset` sont celles de l'ancien moissonnage, retire
+///   le 2026-11-17 : gardees comme historique, plus jamais ecrites.
+/// - `mode` : `full` | `forced`.
+/// - `state` : `running` | `done` | `unchanged` | `failed` (`paused` et `superseded` : ancien
+///   moissonnage seulement).
+/// - `watermark` : `Last-Modified` de `sets.csv.gz` importe.
+/// - `lastPage`, `callsUsed`, `unmatched` : ancien moissonnage seulement.
 model ImportRun {
   id           String    @id @default(uuid()) @db.Char(36)
   source       String    @db.VarChar(32)

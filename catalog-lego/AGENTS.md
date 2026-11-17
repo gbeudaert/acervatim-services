@@ -19,9 +19,11 @@ ici** : il vient de `libs/catalog-core` au jalon M6, il ne se forke pas (voir RE
   Prisma `mysql`.
 - **Aucun appel sortant depuis un controller ou un service metier.** Toute source passe par sa
   file BullMQ (debit borne, single-flight) puis par `ApiCacheService`.
-- **Brickset ne doit jamais etre appele sur le chemin d'une requete utilisateur.** Son quota est
-  de 100 appels/jour : un seul appel interactif consomme le budget de tous. Il n'alimente que le
-  moissonnage nocturne.
+- **Ce service n'appelle plus Brickset, et sa cle reste vide.** Depuis le 2026-11-17 (decision
+  du 2026-11-16), Brickset n'est appele que par `rebrickable-data`, au scan d'un code absent de
+  son cache, un appel au plus par code, codes gardes 90 jours. Le moissonneur d'ici
+  (`HarvestService.harvestBrickset`) ne doit pas etre relance ni repare : ce service entier est
+  remplace par un clone de `catalog-vinyl` sur `catalog-core` (action C7, conception F10).
 - Toute la documentation de conception va dans `../../docs`. Ici : README + AGENTS.md.
 - Pas de nouvelle dependance sans accord prealable.
 

@@ -76,7 +76,9 @@ data:
   # sous controle `Last-Modified`.
   # Aucune variable `BRICKSET_*` ici ni dans le Secret : tant que l'accord de Brickset n'est
   # pas ecrit, la cle reste absente et aucun appel ne part (cf. acervatim-secrets.example.yaml).
-  # BRICKSET_BASE_URL et BRICKSET_DAILY_CALL_BUDGET gardent leurs valeurs par defaut.
+  # Avec la cle, Brickset n'est appele qu'au scan d'un code absent du cache. BRICKSET_BASE_URL,
+  # BRICKSET_DAILY_CALL_BUDGET (90), BRICKSET_BARCODE_TTL_DAYS (90), BRICKSET_MISS_TTL_DAYS (7)
+  # et BRICKSET_SCAN_WAIT_MS (6000) gardent leurs valeurs par defaut.
   REBRICKABLE_DOWNLOADS_URL: https://cdn.rebrickable.com/media/downloads
   HTTP_USER_AGENT: Acervatim-Backend/1.0 (+contact@acervatim.local)
 ---

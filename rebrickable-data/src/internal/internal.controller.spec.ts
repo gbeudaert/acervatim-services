@@ -1,3 +1,4 @@
+import { BricksetLookupService } from '../brickset/brickset-lookup.service';
 import { CatalogService } from '../catalog/catalog.service';
 import {
   BarcodeParamsSchema,
@@ -62,12 +63,17 @@ describe('SetsQuerySchema', () => {
 describe('InternalController', () => {
   const catalog = {
     searchSets: jest.fn().mockResolvedValue({ items: [], hasMore: false }),
-    findByBarcode: jest.fn().mockResolvedValue([{ setNum: '42131-1' }]),
     getSet: jest.fn().mockResolvedValue({ setNum: '42131-1' }),
     listThemes: jest.fn().mockResolvedValue([{ slug: 'technic' }]),
   };
+  const barcodes = {
+    lookup: jest
+      .fn()
+      .mockResolvedValue({ items: [{ setNum: '42131-1' }], lookup: 'cache' }),
+  };
   const controller = new InternalController(
     catalog as unknown as CatalogService,
+    barcodes as unknown as BricksetLookupService,
   );
 
   it('sets : transmet la requete validee', async () => {
@@ -80,11 +86,15 @@ describe('InternalController', () => {
     });
   });
 
-  it('by-barcode et themes : enveloppent la liste dans { items }', async () => {
+  it('by-barcode : rend les sets et l issue de la recherche au scan', async () => {
     expect(await controller.byBarcode({ code: '673-419-340-496' })).toEqual({
       items: [{ setNum: '42131-1' }],
+      lookup: 'cache',
     });
-    expect(catalog.findByBarcode).toHaveBeenCalledWith('673-419-340-496');
+    expect(barcodes.lookup).toHaveBeenCalledWith('673-419-340-496');
+  });
+
+  it('themes : enveloppe la liste dans { items }', async () => {
     expect(await controller.listThemes({})).toEqual({
       items: [{ slug: 'technic' }],
     });

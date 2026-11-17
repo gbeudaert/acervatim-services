@@ -10,16 +10,17 @@ import { BRICKSET_QUEUE, BricksetFetchJobData } from './brickset.types';
  * `concurrency: 1` et un limiter tres bas : la contrainte de Brickset n'est pas un debit
  * instantane mais un **quota journalier** (100 appels `getSets` sur une cle libre). Le budget
  * est donc gere en amont par `BricksetService` ; ici on se contente de garantir qu'aucune rafale
- * ne parte, y compris si plusieurs jobs sont enfiles par erreur.
+ * ne parte, meme quand plusieurs codes inconnus sont scannes au meme moment.
  *
  * **Une seule tentative HTTP par job** (`maxAttempts: 1`) : le budget compte une unite par job,
  * et chaque nouvelle tentative du client HTTP serait un appel reel de plus, invisible du
- * compteur. Une page en echec est reprise par la campagne suivante, qui la recompte.
+ * compteur. Un code dont l'appel a echoue n'est pas marque inconnu : le scan suivant le redemande,
+ * et ce nouvel appel est compte.
  *
  * La cle API est ajoutee **ici**, depuis la configuration : le payload du job (stocke dans
  * Redis) ne porte que les parametres `getSets`.
  *
- * Ce worker ne sert **jamais** une requete utilisateur : il n'alimente que le moissonneur.
+ * Il ne recoit que les recherches de codes scannes absents du cache (`BricksetLookupService`).
  */
 @Processor(BRICKSET_QUEUE, {
   concurrency: 1,

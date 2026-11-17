@@ -1,10 +1,8 @@
 import { Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
-import {
-  BricksetHarvestService,
-  HarvestReport,
-} from '../brickset/brickset-harvest.service';
+import { BricksetLookupService } from '../brickset/brickset-lookup.service';
+import { CatalogService } from '../catalog/catalog.service';
 import { ApiCacheService } from '../common/cache/api-cache.service';
 import {
   ImportReport,
@@ -18,21 +16,24 @@ export const DAILY_REFRESH_TIMEZONE = 'UTC';
 
 export interface RefreshReport {
   import: ImportReport | null;
-  harvest: HarvestReport | null;
+  /** Sets dont les codes-barres, confirmes il y a plus de 90 jours, ont ete effaces. */
+  expiredBarcodes: number | null;
 }
 
 /**
- * Le seul passage planifie du service : import des CSV Rebrickable **puis** campagne Brickset.
+ * Le seul passage planifie du service : import des CSV Rebrickable, purge du cache, puis
+ * effacement des codes-barres confirmes il y a plus de `BRICKSET_BARCODE_TTL_DAYS`.
  *
- * L'ordre compte - les nouveautes du jour doivent exister avant qu'on leur cherche un code-barres
- * - mais le second ne depend pas du succes du premier : un import `unchanged` ou `failed` laisse
- * un catalogue valide, et le budget Brickset du jour serait perdu si on ne le depensait pas.
+ * **Aucun appel a Brickset ici** : depuis le 2026-11-17, Brickset n'est appele qu'au scan d'un
+ * code absent du cache. Chaque etape tourne meme si la precedente a echoue : un import
+ * `unchanged` ou `failed` laisse un catalogue valide, et l'effacement tient l'engagement des
+ * 90 jours pris aupres de Brickset.
  *
  * Au demarrage (hors `NODE_ENV=test`), un catalogue vide declenche le meme enchainement **en
  * tache de fond** : le service repond tout de suite, vide, puis se remplit.
  *
- * Import et campagne restent chacun en single-flight : un appel `/admin/*` concurrent se rattache
- * au passage en cours au lieu d'en lancer un second.
+ * L'import reste en single-flight : un appel `/admin/*` concurrent se rattache au passage en
+ * cours au lieu d'en lancer un second.
  */
 @Injectable()
 export class DailyRefreshService implements OnApplicationBootstrap {
@@ -43,7 +44,8 @@ export class DailyRefreshService implements OnApplicationBootstrap {
   constructor(
     private readonly prisma: PrismaService,
     private readonly importer: RebrickableCsvService,
-    private readonly harvest: BricksetHarvestService,
+    private readonly catalog: CatalogService,
+    private readonly barcodes: BricksetLookupService,
     private readonly cache: ApiCacheService,
     private readonly config: ConfigService,
   ) {}
@@ -66,7 +68,7 @@ export class DailyRefreshService implements OnApplicationBootstrap {
     try {
       if ((await this.prisma.legoSet.count()) > 0) return;
       this.logger.log(
-        'catalogue vide au demarrage : import puis moissonnage en tache de fond',
+        'catalogue vide au demarrage : import en tache de fond',
       );
       await this.refresh('demarrage');
     } catch (err) {
@@ -74,7 +76,7 @@ export class DailyRefreshService implements OnApplicationBootstrap {
     }
   }
 
-  /** Import puis campagne Brickset. Ne leve jamais : chaque etape journalise son echec. */
+  /** Import, purge du cache, codes expires. Ne leve jamais : chaque etape journalise son echec. */
   async refresh(trigger: string): Promise<RefreshReport> {
     let importReport: ImportReport | null = null;
     try {
@@ -87,24 +89,29 @@ export class DailyRefreshService implements OnApplicationBootstrap {
     }
 
     try {
-      // Les seules entrees de `api_cache` sont les compteurs de budget : purge des jours passes.
+      // `api_cache` ne porte que les compteurs de budget et les codes marques inconnus : purge
+      // des entrees echues.
       await this.cache.pruneExpired();
     } catch (err) {
       this.logger.warn(`${trigger}: purge du cache - ${errorMessage(err)}`);
     }
 
-    let harvestReport: HarvestReport | null = null;
+    let expiredBarcodes: number | null = null;
     try {
-      harvestReport = await this.harvest.run();
-      this.logger.log(
-        `${trigger}: brickset ${harvestReport.state} (${harvestReport.rowsUpserted} sets annotes, ${harvestReport.unmatched} sans correspondance)`,
+      expiredBarcodes = await this.catalog.purgeExpiredBarcodes(
+        this.barcodes.freshSince(),
       );
+      if (expiredBarcodes > 0) {
+        this.logger.log(
+          `${trigger}: codes-barres de ${expiredBarcodes} sets effaces (plus de 90 jours)`,
+        );
+      }
     } catch (err) {
       this.logger.error(
-        `${trigger}: campagne brickset interrompue - ${errorMessage(err)}`,
+        `${trigger}: effacement des codes-barres expires - ${errorMessage(err)}`,
       );
     }
-    return { import: importReport, harvest: harvestReport };
+    return { import: importReport, expiredBarcodes };
   }
 }
 

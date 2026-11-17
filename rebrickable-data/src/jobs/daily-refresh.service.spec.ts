@@ -1,5 +1,6 @@
 import { ConfigService } from '@nestjs/config';
-import { BricksetHarvestService } from '../brickset/brickset-harvest.service';
+import { BricksetLookupService } from '../brickset/brickset-lookup.service';
+import { CatalogService } from '../catalog/catalog.service';
 import { ApiCacheService } from '../common/cache/api-cache.service';
 import { RebrickableCsvService } from '../import/rebrickable-csv.service';
 import { PrismaService } from '../prisma/prisma.service';
@@ -7,6 +8,8 @@ import {
   DAILY_REFRESH_CRON,
   DailyRefreshService,
 } from './daily-refresh.service';
+
+const FRESH_SINCE = new Date('2026-08-19T03:00:00Z');
 
 function importResult(state: string) {
   return jest.fn().mockResolvedValue({ state, rowsUpserted: 0, themes: 0 });
@@ -21,11 +24,8 @@ function makeJobs(opts: {
     legoSet: { count: jest.fn().mockResolvedValue(opts.sets ?? 0) },
   };
   const importer = { run: opts.importer ?? importResult('done') };
-  const harvest = {
-    run: jest
-      .fn()
-      .mockResolvedValue({ state: 'skipped', rowsUpserted: 0, unmatched: 0 }),
-  };
+  const catalog = { purgeExpiredBarcodes: jest.fn().mockResolvedValue(3) };
+  const barcodes = { freshSince: jest.fn().mockReturnValue(FRESH_SINCE) };
   const cache = { pruneExpired: jest.fn().mockResolvedValue(0) };
   const config = {
     get: () => opts.nodeEnv ?? 'development',
@@ -33,11 +33,12 @@ function makeJobs(opts: {
   const service = new DailyRefreshService(
     prisma as unknown as PrismaService,
     importer as unknown as RebrickableCsvService,
-    harvest as unknown as BricksetHarvestService,
+    catalog as unknown as CatalogService,
+    barcodes as unknown as BricksetLookupService,
     cache as unknown as ApiCacheService,
     config,
   );
-  return { service, prisma, importer, harvest, cache };
+  return { service, prisma, importer, catalog, cache };
 }
 
 describe('DailyRefreshService', () => {
@@ -51,15 +52,23 @@ describe('DailyRefreshService', () => {
     ).toMatchObject({ cronTime: DAILY_REFRESH_CRON, timeZone: 'UTC' });
   });
 
-  it('enchaine import puis moissonnage, dans cet ordre', async () => {
-    const { service, importer, harvest, cache } = makeJobs({});
+  it('enchaine import, purge du cache puis effacement des codes expires', async () => {
+    const { service, importer, catalog, cache } = makeJobs({});
 
     await service.daily();
 
     expect(importer.run.mock.invocationCallOrder[0]).toBeLessThan(
-      harvest.run.mock.invocationCallOrder[0],
+      cache.pruneExpired.mock.invocationCallOrder[0],
     );
-    expect(cache.pruneExpired).toHaveBeenCalled();
+    expect(cache.pruneExpired.mock.invocationCallOrder[0]).toBeLessThan(
+      catalog.purgeExpiredBarcodes.mock.invocationCallOrder[0],
+    );
+    expect(catalog.purgeExpiredBarcodes).toHaveBeenCalledWith(FRESH_SINCE);
+  });
+
+  it('ne contient plus aucune campagne Brickset', () => {
+    const { service } = makeJobs({});
+    expect(service).not.toHaveProperty('harvest');
   });
 
   it.each([
@@ -69,23 +78,35 @@ describe('DailyRefreshService', () => {
       'en exception',
       jest.fn().mockRejectedValue(new Error('base injoignable')),
     ],
-  ])('moissonne meme si l import est %s', async (_label, importer) => {
-    const { service, harvest } = makeJobs({ importer });
+  ])(
+    'efface les codes expires meme si l import est %s',
+    async (_label, importer) => {
+      const { service, catalog } = makeJobs({ importer });
+
+      const report = await service.refresh('test');
+
+      expect(catalog.purgeExpiredBarcodes).toHaveBeenCalledTimes(1);
+      expect(report.expiredBarcodes).toBe(3);
+    },
+  );
+
+  it('un echec de l effacement ne fait pas echouer le passage', async () => {
+    const { service, catalog } = makeJobs({});
+    catalog.purgeExpiredBarcodes.mockRejectedValueOnce(new Error('verrou'));
 
     const report = await service.refresh('test');
 
-    expect(harvest.run).toHaveBeenCalledTimes(1);
-    expect(report.harvest).toMatchObject({ state: 'skipped' });
+    expect(report).toMatchObject({ expiredBarcodes: null });
+    expect(report.import).toMatchObject({ state: 'done' });
   });
 
-  it('au demarrage, catalogue vide : import puis moissonnage en tache de fond', async () => {
-    const { service, importer, harvest } = makeJobs({ sets: 0 });
+  it('au demarrage, catalogue vide : import en tache de fond', async () => {
+    const { service, importer } = makeJobs({ sets: 0 });
 
     service.onApplicationBootstrap();
     await service.bootRefresh;
 
     expect(importer.run).toHaveBeenCalledTimes(1);
-    expect(harvest.run).toHaveBeenCalledTimes(1);
   });
 
   it('au demarrage, catalogue deja rempli : rien', async () => {
