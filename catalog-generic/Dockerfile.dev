@@ -8,7 +8,7 @@ WORKDIR /app
 # procps : fournit `ps`, utilise par `nest start --watch`
 RUN apt-get update && apt-get install -y --no-install-recommends openssl procps && rm -rf /var/lib/apt/lists/*
 
-# catalog-core : le CRUD collections / noeuds / items mutualise par les trois catalogs.
+# catalog-core : le CRUD collections / noeuds / items mutualise par les quatre catalogs.
 #
 # Copie **dans** l'arborescence du service (`/app/catalog-core`), et non a cote : il est
 # compile comme une partie de ce programme, pas installe comme un paquet. Le placer ici rend

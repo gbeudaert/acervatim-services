@@ -27,10 +27,16 @@ import {
 } from '../sources/mangadex/mangadex.types';
 import { SOURCE_ADAPTERS } from '../sources/source-snapshot.service';
 import {
+  AdapterSearchMeta,
   AdapterSearchResult,
   SourceAdapter,
   UnifiedItem,
 } from '../sources/adapters/types';
+
+/** Page de `GET /v1/search` : la pagination, plus ce que la source ajoute (`meta.barcodeLookup`). */
+export interface SearchPage extends CursorPage<UnifiedItem> {
+  meta: CursorPage<UnifiedItem>['meta'] & AdapterSearchMeta;
+}
 
 /** Critère de recherche : exactement un des deux est défini (garanti par le DTO). */
 export interface SearchCriteria {
@@ -344,7 +350,7 @@ export class SearchService {
     criteria: SearchCriteria,
     cursor: string | undefined,
     limit: number,
-  ): Promise<CursorPage<UnifiedItem>> {
+  ): Promise<SearchPage> {
     const adapter = this.byMediaType.get(type);
     if (!adapter) {
       throw new BadRequestException(
@@ -366,6 +372,7 @@ export class SearchService {
     return {
       data: res.items,
       meta: {
+        ...res.meta,
         pagination: {
           nextCursor: res.nextCursor,
           limit,

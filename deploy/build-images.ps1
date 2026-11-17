@@ -1,7 +1,5 @@
 #!/usr/bin/env pwsh
-# Construit les onze images de la constellation : les dix services + l'image de migration.
-# `catalog-lego` n'en fait pas encore partie : il n'a pas d'image de production et doit etre
-# refait avant la bascule (voir deploy/README.md, 8).
+# Construit les douze images de la constellation : les onze services + l'image de migration.
 #
 # Usage :
 #   ./deploy/build-images.ps1                      # toutes, arch de l'hote
@@ -27,7 +25,7 @@ param(
 $ErrorActionPreference = 'Stop'
 Set-Location (Split-Path -Parent $PSScriptRoot)
 
-# Les trois catalogs se construisent depuis la racine : leur Dockerfile a besoin de
+# Les quatre catalogs se construisent depuis la racine : leur Dockerfile a besoin de
 # `catalog-core/` en plus de leur propre dossier (voir catalog-core/README.md).
 $Images = @(
     @{ Name = 'gateway';         Context = 'gateway';     File = 'gateway/Dockerfile' }
@@ -39,6 +37,7 @@ $Images = @(
     @{ Name = 'catalog-generic'; Context = '.';           File = 'catalog-generic/Dockerfile' }
     @{ Name = 'catalog-manga';   Context = '.';           File = 'catalog-manga/Dockerfile' }
     @{ Name = 'catalog-vinyl';   Context = '.';           File = 'catalog-vinyl/Dockerfile' }
+    @{ Name = 'catalog-lego';    Context = '.';           File = 'catalog-lego/Dockerfile' }
     @{ Name = 'rebrickable-data'; Context = 'rebrickable-data'; File = 'rebrickable-data/Dockerfile' }
     @{ Name = 'migrate';         Context = '.';           File = 'deploy/Dockerfile.migrate' }
 )

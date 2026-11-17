@@ -22,8 +22,9 @@ import { SourcesService } from './sources.service';
  * stockee chiffree dans `oauth_credentials` comme les autres, et le resolveur la privilegie.
  *
  * La route est generalisee en `/v1/sources/:provider/token` la ou le monolithe codait
- * `tmdb` en dur : `catalog-lego` sert deja la meme forme pour Rebrickable, et une route par
- * source aurait fait diverger deux implementations du meme geste.
+ * `tmdb` en dur : une route par source aurait fait diverger deux implementations du meme
+ * geste. (L'ancien `catalog-lego` servait la meme forme pour Rebrickable ; refait le
+ * 2026-11-17, il n'a plus aucune cle personnelle.)
  */
 @ApiTags('sources')
 @ApiBearerAuth()

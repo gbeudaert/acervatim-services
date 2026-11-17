@@ -81,7 +81,7 @@ model CollectionShareEntry {
   statuses       Json
   /// Nom de la collection au moment du partage. Voir le JSDoc ci-dessus.
   collectionName String @map("collection_name") @db.VarChar(255)
-  /// `vinyl` | `manga` | `movie` | `book` | `game`. Sert au routage vers le bon catalog.
+  /// `vinyl` | `manga` | `movie` | `book` | `game` | `lego`. Sert au routage vers le bon catalog.
   typeCode       String @map("type_code") @db.VarChar(32)
 
   share CollectionShare @relation(fields: [shareId], references: [id], onDelete: Cascade)

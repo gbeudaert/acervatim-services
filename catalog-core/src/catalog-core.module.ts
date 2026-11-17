@@ -44,8 +44,8 @@ export const CATALOG_INTERNAL_CONTROLLERS: Type<unknown>[] = [
 
 export interface CatalogCoreOptions {
   /**
-   * Profils de type servis par CE catalog. `catalog-generic` en declare trois, `catalog-manga`
-   * et `catalog-vinyl` un seul chacun.
+   * Profils de type servis par CE catalog. `catalog-generic` en declare trois, `catalog-manga`,
+   * `catalog-vinyl` et `catalog-lego` un seul chacun.
    */
   profiles: CollectionTypeProfile[];
   /** Le `PrismaService` du service catalog. */
@@ -57,7 +57,7 @@ export interface CatalogCoreOptions {
 }
 
 /**
- * Le CRUD collections / noeuds / items, mutualise par les trois catalogs.
+ * Le CRUD collections / noeuds / items, mutualise par les quatre catalogs.
  *
  * ### Pourquoi cette bibliotheque existe
  *
@@ -70,9 +70,9 @@ export interface CatalogCoreOptions {
  * memoire au reseau (2 de architecture-microservices.md).
  *
  * Recopier ce CRUD dans chaque catalog creerait exactement la divergence que le decoupage
- * cherche a eviter : trois implementations du meme code, qui derivent au premier correctif
- * applique d'un seul cote. C'est l'argument que `catalog-lego` avance pour ne PAS forker, et
- * il vaut a plus forte raison ici, ou les trois services existent en meme temps.
+ * cherche a eviter : plusieurs implementations du meme code, qui derivent au premier correctif
+ * applique d'un seul cote. C'est pour cela que `catalog-lego`, d'abord ecrit comme une stack
+ * autonome, a ete refait sur cette bibliotheque (2026-11-17) au lieu de garder son propre code.
  *
  * ### Ce qu'elle ne contient pas
  *

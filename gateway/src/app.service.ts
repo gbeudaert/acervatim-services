@@ -127,6 +127,7 @@ export class AppService {
       'catalog-generic',
       'catalog-manga',
       'catalog-vinyl',
+      'catalog-lego',
     ];
     return Promise.all(
       names.map(async (service): Promise<ServiceHealth> => {
@@ -152,7 +153,7 @@ export class AppService {
    * Agregation OpenAPI (1 de architecture-microservices.md).
    *
    * Le contrat public est un seul document du point de vue de l'app : le decoupage ne doit
-   * pas obliger a consulter huit specifications pour connaitre `/v1/*`. On fusionne les
+   * pas obliger a consulter neuf specifications pour connaitre `/v1/*`. On fusionne les
    * `paths` de chaque service ; en cas de collision - deux services declarant le meme
    * chemin - on garde le premier et on **journalise**, parce qu'une collision signale une
    * table de routage et une implementation qui ne disent pas la meme chose.
@@ -172,6 +173,7 @@ export class AppService {
       'catalog-generic',
       'catalog-manga',
       'catalog-vinyl',
+      'catalog-lego',
     ];
 
     for (const service of names) {

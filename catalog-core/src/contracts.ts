@@ -25,6 +25,7 @@ export const COLLECTION_TYPE_CODES = [
   'movie',
   'book',
   'game',
+  'lego',
 ] as const;
 export type CollectionTypeCode = (typeof COLLECTION_TYPE_CODES)[number];
 
@@ -236,6 +237,10 @@ export interface InternalTokenResolution {
  * reference sans `rawData`. C'est ce qui distingue « source connue sans adapter » de
  * « provider inconnu », et le contrat V1 en depend - une source sans adapter ET sans
  * `unifiedData` est un `400`.
+ *
+ * `rebrickable` s'y ajoute avec le type `lego` (2026-11-17) : son adapter lit `rebrickable-data`
+ * par `/internal/*`, jamais l'API Rebrickable, et `externalId` est le numero canonique du set
+ * (`42131-1`).
  */
 export const ITEM_SOURCE_CODES = [
   'discogs',
@@ -244,6 +249,7 @@ export const ITEM_SOURCE_CODES = [
   'bnf',
   'mangadex',
   'gbooks',
+  'rebrickable',
 ] as const;
 export type ItemSourceCode = (typeof ITEM_SOURCE_CODES)[number];
 
@@ -305,7 +311,8 @@ export interface InternalSourceSnapshotResponse {
 /**
  * Base de reference du catalogue LEGO, servie par `rebrickable-data` : sets, themes et codes-
  * barres, alimentes par les CSV publics Rebrickable et, au scan, par Brickset. Aucune route
- * publique, aucune donnee d'utilisateur - ce service ne participe pas a la saga RGPD.
+ * publique, aucune donnee d'utilisateur - ce service ne participe pas a la saga RGPD. Son
+ * consommateur est l'adapter `rebrickable` de `search`, qui sert `GET /v1/search?type=lego`.
  *
  * Toutes ces routes sont des **lectures locales**, sauf `by-barcode` : pour un code absent du
  * cache, elle appelle Brickset une fois (cf. {@link InternalLegoBarcodeLookup}). Aucune ne

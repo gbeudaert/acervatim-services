@@ -1,72 +1,56 @@
-## acervatim-backend-lego
+## acervatim-catalog-lego
 
-Service catalogue **LEGO** d'Acervatim (NestJS, Prisma, MariaDB). Premier service extrait de la
-cible micro-services decrite dans `../../docs/agent/backend/architecture-microservices.md` :
-il tourne seul aujourd'hui, et est ecrit pour se ranger derriere le `gateway` sans reecriture.
-
-Perimetre : **recherche et identification de sets LEGO** (par nom, par code-barres, par type de
-set) + l'index local qui les rend possibles. Le CRUD collections / noeuds / items **n'est pas
-ici** : il vient de `libs/catalog-core` au jalon M6, il ne se forke pas (voir README).
+Catalogue des collections de type LEGO (NestJS, Prisma, MariaDB). Schema `acv_cat_lego`, port 3220.
+Clone de `catalog-vinyl` sur `catalog-core`, refait le 2026-11-17 (action C7). Conception :
+`../../../acervatim-docs/_bmad-output/implementation-artifacts/spec-collection-lego.md`.
 
 ## Policy
 
-- Aucune donnee personnelle : ce service ne connait qu'un `userId` opaque venu d'`identity`. Ne
-  jamais ajouter a `source_credentials` un champ qui reidentifie un humain.
-- Aucune `@relation` Prisma ne franchit la frontiere du schema `acv_cat_lego`. C'est l'invariant
-  central du decoupage ; un `userId` reste une colonne nue, sans FK.
-- Ne nommer aucun materiel ni hebergeur (Raspberry Pi, NAS, AWS...) dans le code ou un
-  commentaire. Les contraintes reelles sont : image `linux/arm64`, MariaDB via le provider
-  Prisma `mysql`.
-- **Aucun appel sortant depuis un controller ou un service metier.** Toute source passe par sa
-  file BullMQ (debit borne, single-flight) puis par `ApiCacheService`.
-- **Ce service n'appelle plus Brickset, et sa cle reste vide.** Depuis le 2026-11-17 (decision
-  du 2026-11-16), Brickset n'est appele que par `rebrickable-data`, au scan d'un code absent de
-  son cache, un appel au plus par code, codes gardes 90 jours. Le moissonneur d'ici
-  (`HarvestService.harvestBrickset`) ne doit pas etre relance ni repare : ce service entier est
-  remplace par un clone de `catalog-vinyl` sur `catalog-core` (action C7, conception F10).
-- Toute la documentation de conception va dans `../../docs`. Ici : README + AGENTS.md.
+- **Ne rien ecrire de metier ici.** Tout le CRUD vient de `../catalog-core`. Un besoin
+  specifique au LEGO se traite par son `CollectionTypeProfile` (`catalog-core/src/types/lego.ts`),
+  jamais par du code ajoute dans ce service.
+- **Ce service n'appelle ni Rebrickable ni Brickset, et n'a aucune cle de source.** Le catalogue
+  des sets est dans `rebrickable-data`, seul a lire les CSV Rebrickable et seul a appeler
+  Brickset, au scan. La recherche passe par `search` (`GET /v1/search?type=lego`). Ne pas
+  reintroduire d'index local, de moissonneur ni de cle personnelle : c'est ce que l'ancienne
+  stack faisait, et ce qui a ete supprime.
+- **Aucun garde premium.** Les gardes sont au gateway (3.6).
+- **Aucune `@relation` Prisma ne franchit la frontiere du schema `acv_cat_lego`.**
+- **Le schema Prisma et la migration init sont identiques a ceux des autres catalogs, octet
+  pour octet.** C'est ce qui permet a `catalog-core` d'etre compile contre tous les clients
+  generes.
+- **Les identifiants externes vont dans `sources[]`**, jamais dans `unifiedData` : numero
+  canonique Rebrickable (`provider: 'rebrickable'`), code-barres (`provider: 'barcode'`).
+- Ne nommer aucun materiel ni hebergeur dans le code ou un commentaire.
+- Toute la documentation de conception va dans `../../../acervatim-docs`. Ici : README + AGENTS.md.
 - Pas de nouvelle dependance sans accord prealable.
 
 ## Where things are
 
-- Cible d'architecture, contrat des routes `/internal/*`, phasage :
-  `../../docs/agent/backend/architecture-microservices.md`.
-- Regles de contrat API (Zod, RFC 9457, pagination cursor, filtres) :
-  `../../docs/agent/backend/contrats-api-v1.md`. Elles s'appliquent telles quelles.
-- Paysage des sources externes du monolithe (BYOT / repli premium / mode degrade) :
-  `../../docs/agent/transverse/sources-externes.md`. La resolution de jeton d'ici en est
-  la transposition.
-- Pas de `lib/` ni de `utils/` global : tout va dans `src/common/<sous-dossier explicite>/`.
+- `src/profiles.ts` : **le seul fichier qui distingue ce service des autres catalogs.**
+- `src/profiles.spec.ts` : les tests du profil `lego`, qui vit dans `catalog-core`.
+- `catalog-core/` : jonction (hote) ou copie (conteneur) vers la bibliotheque partagee.
+- `src/common/` : le socle, identique a celui des autres services.
 
 ## Running and verifying
 
+- Tout passe par le wrapper de la racine : `../scripts/dev.ps1 up-bg`,
+  `../scripts/dev.ps1 logs catalog-lego`, `../scripts/dev.ps1 test catalog-lego`.
+- **`../scripts/dev.ps1 link-core` une fois** apres un clone.
 - `npm`, `npx`, `node`, `prisma`, `nest` ne se lancent **jamais** depuis Windows : passer par
-  `./scripts/dev.ps1`, qui les execute dans le conteneur `app`. Un lancement hote produit des
-  artefacts Prisma inutilisables dans le conteneur.
-- Demarrage : `./scripts/dev.ps1 up-bg`. Verification de compilation : `./scripts/dev.ps1 build-ts`.
-  Tests : `./scripts/dev.ps1 test`.
-- **`docker compose restart` ne relit pas `.env`.** Apres toute modification du `.env`, utiliser
-  `docker compose up -d --force-recreate app`, sinon le conteneur tourne avec l'ancienne
-  configuration et les symptomes sont trompeurs (JWT « invalide », cle « absente »).
-- Les ports sont decales (3010 / 3307 / 6380) pour cohabiter avec la stack du monolithe.
+  `../scripts/dev.ps1 <cmd> catalog-lego`.
+- Une modification de `catalog-core` affecte **tous les catalogs** : les type-checker tous
+  (`../scripts/dev.ps1 build-ts`) avant de conclure.
 
 ## Conventions that differ from defaults
 
-- Validation par Zod via `nestjs-zod` (`createZodDto`) - pas de `class-validator`.
-- Erreurs RFC 9457 sous les **memes URI `type`** que le monolithe (`https://api.acervatim/probs/...`).
-  Le gateway relaie le corps tel quel : inventer un espace de noms local casserait l'app.
-- Authentification par `PrincipalGuard`, pas par un `JwtAuthGuard`. Deux modes : principal signe
-  `X-Acervatim-Principal` (derriere le gateway) ou JWT verifie localement (mode autonome). En
-  mode autonome, `premium` vaut `false` : ce service ne peut pas resoudre le premium.
-- Le `premium: true` de `SYSTEM_CTX` (moissonneur) n'accorde aucun droit a un humain : il force
-  l'usage de la cle serveur, seule cle qui ait un sens pour un job sans proprietaire.
-- Pas d'emoji dans le code ni dans les messages de commit.
+Les memes que `catalog-vinyl` (voir son AGENTS.md) : `dist/src/main.js`, `paths` du tsconfig,
+`PrincipalGuard` par middleware, Zod via `nestjs-zod`, erreurs RFC 9457, pas d'emoji.
 
 ## Known pitfalls
 
-- PowerShell 5.1 : ni `&&` ni `||` (utiliser `; if ($?) { ... }`). Garder les sources `.ps1` en
-  ASCII pur.
-- `prisma migrate dev` a besoin de creer une shadow database : sans `db/init/01-grants.sql`
-  applique a la creation du volume, il echoue en `P3014`. Apres un `reset`, le grant repasse seul.
-- `SetIndexService.upsertFromRebrickable` ne doit **jamais** ecrire `ean`/`upc` : Rebrickable ne
-  les connait pas, et un `update` naif effacerait le resultat du moissonnage Brickset.
+- **Un catalog qui ne s'enregistre pas aupres du gateway cree des ressources introuvables.**
+  `GET /health/ready` expose `registry` pour cette raison.
+- **Un oubli de `lego` dans `CATALOG_BY_TYPE` ou dans le scatter-gather du gateway** donne une
+  liste vide en silence, pas une erreur.
+- PowerShell 5.1 : ni `&&` ni `||` (utiliser `; if ($?) { ... }`). Sources `.ps1` en ASCII pur.

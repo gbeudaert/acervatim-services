@@ -13,16 +13,16 @@ Catalogue des collections de types movie, book et game (NestJS, Prisma, MariaDB)
 - **Aucune `@relation` Prisma ne franchit la frontiere du schema `acv_cat_generic`.** `userId` reste
   une colonne nue ; `typeCode` remplace la FK vers `collection_types`, qui appartient a
   `identity`.
-- **Le schema Prisma est identique dans les trois catalogs.** C'est ce qui permet a
-  `catalog-core` d'etre compile contre les trois clients generes. Le modifier ici seul casse
-  les deux autres, a la compilation - donc bruyamment, ce qui est le bon mode de defaillance.
+- **Le schema Prisma est identique dans les quatre catalogs.** C'est ce qui permet a
+  `catalog-core` d'etre compile contre tous les clients generes. Le modifier ici seul casse
+  les autres, a la compilation - donc bruyamment, ce qui est le bon mode de defaillance.
 - Ne nommer aucun materiel ni hebergeur dans le code ou un commentaire.
 - Toute la documentation de conception va dans `../../../acervatim-docs`. Ici : README + AGENTS.md.
 - Pas de nouvelle dependance sans accord prealable.
 
 ## Where things are
 
-- `src/profiles.ts` : **le seul fichier qui distingue ce service des deux autres catalogs.**
+- `src/profiles.ts` : **le seul fichier qui distingue ce service des autres catalogs.**
 - `catalog-core/` : jonction (hote) ou copie (conteneur) vers la bibliotheque partagee. Voir
   son README pour la mecanique de compilation - elle n'est pas evidente.
 - `src/common/` : le socle, identique a celui des autres services.
@@ -38,7 +38,7 @@ Catalogue des collections de types movie, book et game (NestJS, Prisma, MariaDB)
   resout pas `../catalog-core/src` et la compilation echoue sur l'hote.
 - `npm`, `npx`, `node`, `prisma`, `nest` ne se lancent **jamais** depuis Windows : passer par
   `../scripts/dev.ps1 <cmd> catalog-generic`.
-- Une modification de `catalog-core` affecte **les trois catalogs** : les type-checker tous
+- Une modification de `catalog-core` affecte **les quatre catalogs** : les type-checker tous
   (`../scripts/dev.ps1 build-ts`) avant de conclure.
 - **`docker compose restart` ne relit pas `.env`.** Apres modification, utiliser
   `docker compose up -d --force-recreate catalog-generic`.

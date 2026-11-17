@@ -198,7 +198,7 @@ export const ROUTE_TABLE: RouteRule[] = [
   },
   {
     // Generalise le `/v1/sources/tmdb/token` du monolithe : la forme vaut pour toute
-    // source a cle personnelle, y compris celles que `catalog-lego` sert deja.
+    // source a cle personnelle. Le LEGO n'en a aucune : `rebrickable-data` sert ses sets.
     methods: ['PUT', 'DELETE'],
     pattern: '/v1/sources/:provider/token',
     target: svc('connections'),

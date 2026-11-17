@@ -8,6 +8,7 @@ import { readFileSync, writeFileSync } from 'fs';
 import helmet from 'helmet';
 import { join } from 'path';
 import { patchNestJsSwagger, ZodValidationPipe } from 'nestjs-zod';
+import { AppController } from './app.controller';
 import { AppModule } from './app.module';
 import { ProblemDetailsExceptionFilter } from './common/filters/problem-details.filter';
 import { CorrelationIdInterceptor } from './common/interceptors/correlation-id.interceptor';
@@ -16,16 +17,17 @@ async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const config = app.get(ConfigService);
 
-  // Un seul saut de proxy de confiance, pour que `req.ip` reflete le client reel et que le
-  // throttler compte par utilisateur et non par proxy. Vaut derriere le reverse proxy comme
-  // derriere le gateway.
+  // Un seul saut de proxy de confiance, pour que `req.ip` reflete l'appelant reel dans les
+  // journaux. Ce service est derriere le gateway, qui porte la limitation de debit.
   app.set('trust proxy', 1);
 
   app.use(helmet({ contentSecurityPolicy: false }));
-  // 64 ko : ce service ne recoit que des query strings et un jeton API. Aucune raison
-  // d'accepter les 256 ko du monolithe, qui lui recoit des `unifiedData`.
-  app.use(json({ limit: '64kb' }));
+  // 256 ko, comme le monolithe : ce service recoit des `unifiedData`, et resserrer ici
+  // refuserait des corps que le contrat V1 accepte aujourd'hui.
+  app.use(json({ limit: '256kb' }));
 
+  // CORS ferme par defaut : ce service n'est jamais appele par un navigateur, seulement par
+  // le gateway. La variable existe pour les cas de diagnostic, pas pour l'exploitation.
   const corsOrigins = (config.get<string>('CORS_ORIGINS') ?? '')
     .split(',')
     .map((o) => o.trim())
@@ -33,7 +35,7 @@ async function bootstrap() {
   app.enableCors({
     origin: corsOrigins.length > 0 ? corsOrigins : false,
     credentials: false,
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    methods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE'],
     allowedHeaders: [
       'Authorization',
       'Content-Type',
@@ -44,14 +46,14 @@ async function bootstrap() {
   });
 
   // Meme prefixe `/v1` que le monolithe : derriere le gateway, ce service doit repondre a
-  // l'URL que l'app connait deja. `/health/*` et `/internal/*` restent hors versioning -
-  // le premier est de l'infra, le second un contrat entre services, pas une API publique.
+  // l'URL que l'app connait deja. `/health/*` et `/internal/*` restent hors versioning - le
+  // premier est de l'infra, le second un contrat entre services, pas une API publique.
   app.setGlobalPrefix('v1', {
     exclude: [
       { path: 'health', method: RequestMethod.ALL },
       { path: 'health/(.*)', method: RequestMethod.ALL },
       { path: 'internal/(.*)', method: RequestMethod.ALL },
-      { path: 'admin/(.*)', method: RequestMethod.ALL },
+      { path: 'openapi.json', method: RequestMethod.ALL },
     ],
   });
 
@@ -61,25 +63,32 @@ async function bootstrap() {
 
   patchNestJsSwagger();
   const swaggerConfig = new DocumentBuilder()
-    .setTitle('Acervatim LEGO API')
+    .setTitle('Acervatim Catalog (lego) API')
     .setVersion('1.0.0')
     .addBearerAuth()
     .build();
   const document = SwaggerModule.createDocument(app, swaggerConfig);
-  writeFileSync('./openapi.json', JSON.stringify(document, null, 2));
+  AppController.openApiDocument = document as unknown as Record<string, unknown>;
   if (process.env.NODE_ENV !== 'production') {
+    // Artefact de developpement, ignore par git. **Hors production** : le document est servi
+    // en memoire sur `/openapi.json` (c'est par la que le gateway l'agrege), et ecrire un
+    // fichier a chaque demarrage obligerait le conteneur a garder son systeme de fichiers
+    // inscriptible pour rien.
+    writeFileSync('./openapi.json', JSON.stringify(document, null, 2));
     SwaggerModule.setup('docs', app, document);
   }
 
-  // Draine les workers BullMQ au SIGTERM : sans ca, un moissonnage en cours est perdu
-  // au lieu d'etre repris a son dernier point de reprise.
   app.enableShutdownHooks();
 
-  const port = config.get<number>('PORT', 3010);
+  const port = config.get<number>('PORT', 3220);
   await app.listen(port);
 
+  // Resolu depuis le repertoire de travail, pas depuis `__dirname` : la disposition de
+  // `dist/` n'est pas la meme partout - `dist/main.js` ici, `dist/src/main.js` pour les
+  // catalogs, dont la racine de compilation englobe `catalog-core/`. Le WORKDIR, lui, est
+  // toujours celui qui contient `package.json`, en developpement comme dans l'image.
   const pkg = JSON.parse(
-    readFileSync(join(__dirname, '..', 'package.json'), 'utf8'),
+    readFileSync(join(process.cwd(), 'package.json'), 'utf8'),
   ) as { name: string; version: string };
   new Logger('Bootstrap').log(
     `${pkg.name} v${pkg.version} demarre - port=${port} env=${process.env.NODE_ENV ?? 'development'}`,

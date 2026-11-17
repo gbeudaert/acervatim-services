@@ -1,45 +1,58 @@
 import { Injectable } from '@nestjs/common';
-import { PrismaService } from './prisma/prisma.service';
-import { RedisHealthService } from './common/redis/redis-health.service';
-import { SetIndexService } from './common/sources/set-index/set-index.service';
+import { CatalogInternalService, ProfileRegistry } from '../catalog-core/src';
+import { ConfigService } from '@nestjs/config';
+import {
+  ReadinessStatus,
+  readinessStatus,
+  withDeadline,
+} from './common/health/readiness';
 
 @Injectable()
 export class AppService {
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly redisHealth: RedisHealthService,
-    private readonly index: SetIndexService,
+    private readonly internal: CatalogInternalService,
+    private readonly profiles: ProfileRegistry,
+    private readonly config: ConfigService,
   ) {}
 
   /** Liveness : le processus repond. Aucune dependance sollicitee. */
   health(): { status: string; service: string } {
-    return { status: 'ok', service: 'acervatim-lego' };
+    return { status: 'ok', service: 'acervatim-catalog-lego' };
   }
 
   /**
-   * Readiness : base joignable, Redis joignable, index dimensionne. `indexed` est expose parce
-   * qu'un service techniquement sain mais a index vide ne sait pas repondre a un scan - c'est
-   * une information d'exploitation, pas un motif d'echec.
+   * Readiness. Base injoignable ou muette au-dela du delai : `unavailable`, que le
+   * controleur traduit en `503`.
+   *
+   * `registry` dit si ce catalog sait s'enregistrer aupres du gateway. Un `false` n'est pas
+   * une panne - c'est le mode autonome - mais c'est **l'information la plus utile a
+   * exposer** : sans registre, les ressources creees ici ne seront pas routables, et le
+   * symptome (des `404` sur des ressources qui existent) est le plus difficile a
+   * diagnostiquer de toute la cible (3.3).
    */
   async ready(): Promise<{
-    status: string;
+    status: ReadinessStatus;
     db: boolean;
-    redis: boolean;
-    indexed: { total: number; withBarcode: number } | null;
+    types: string[];
+    counts: { collections: number; nodes: number; items: number } | null;
+    registry: boolean;
+    search: boolean;
   }> {
     let db = true;
-    let indexed: { total: number; withBarcode: number } | null = null;
+    let counts: { collections: number; nodes: number; items: number } | null =
+      null;
     try {
-      indexed = await this.index.count();
+      counts = await withDeadline(this.internal.counts());
     } catch {
       db = false;
     }
-    const redis = this.redisHealth.isAvailable();
     return {
-      status: db && redis ? 'ok' : 'degraded',
+      status: readinessStatus(db),
       db,
-      redis,
-      indexed,
+      types: this.profiles.codes(),
+      counts,
+      registry: Boolean(this.config.get<string>('GATEWAY_BASE_URL')),
+      search: Boolean(this.config.get<string>('SEARCH_BASE_URL')),
     };
   }
 }

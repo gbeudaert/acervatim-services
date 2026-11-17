@@ -1,12 +1,12 @@
 ## @acervatim/catalog-core
 
-Le CRUD collections / noeuds / items, mutualise par `catalog-generic`, `catalog-manga` et
-`catalog-vinyl`. **Ce n'est pas un service** : c'est le `libs/catalog-core` de
+Le CRUD collections / noeuds / items, mutualise par `catalog-generic`, `catalog-manga`,
+`catalog-vinyl` et `catalog-lego`. **Ce n'est pas un service** : c'est le `libs/catalog-core` de
 `../../../acervatim-docs/agent/backend/architecture-microservices.md`.
 
 ## Policy
 
-- **Ne jamais forker ce code dans un catalog.** C'est la raison d'etre du dossier : trois
+- **Ne jamais forker ce code dans un catalog.** C'est la raison d'etre du dossier : plusieurs
   copies du meme CRUD divergeraient au premier correctif applique d'un seul cote. Un besoin
   specifique a un type se traite par son `CollectionTypeProfile`, pas par une branche ici.
 - **Cette bibliotheque ne connait pas l'arborescence de son consommateur.** Elle ne doit rien
@@ -39,7 +39,7 @@ Le CRUD collections / noeuds / items, mutualise par `catalog-generic`, `catalog-
   `../scripts/dev.ps1 build-ts catalog-manga` (ou `test catalog-manga`).
 - Sur l'hote, la jonction `catalog-*/catalog-core` se recree par
   `../scripts/dev.ps1 link-core`. Sans elle, l'editeur ne resout pas les imports.
-- Une modification ici affecte **les trois catalogs** : les type-checker tous les trois avant
+- Une modification ici affecte **les quatre catalogs** : les type-checker tous avant
   de conclure (`../scripts/dev.ps1 build-ts` sans argument).
 
 ## Conventions that differ from defaults

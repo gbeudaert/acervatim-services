@@ -52,6 +52,7 @@ export type {
 } from './types/common';
 export { isHierarchical, optionalUrl } from './types/common';
 export { makeFallbackProfile } from './types/fallback';
+export { legoProfile } from './types/lego';
 export { mangaProfile } from './types/manga';
 export { vinylProfile } from './types/vinyl';
 export { summarizeHierarchy } from './types/hierarchy';

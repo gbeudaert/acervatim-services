@@ -38,6 +38,7 @@ export const EnvSchema = z.object({
   CATALOG_GENERIC_BASE_URL: z.string().url().optional(),
   CATALOG_MANGA_BASE_URL: z.string().url().optional(),
   CATALOG_VINYL_BASE_URL: z.string().url().optional(),
+  CATALOG_LEGO_BASE_URL: z.string().url().optional(),
 
   REDIS_HOST: z.string().min(1).default('localhost'),
   REDIS_PORT: z.coerce.number().int().default(6379),

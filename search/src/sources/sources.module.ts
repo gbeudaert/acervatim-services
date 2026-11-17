@@ -15,6 +15,7 @@ import { MAL_QUEUE } from './adapters/mal.types';
 import { TmdbAdapter } from './adapters/tmdb.adapter';
 import { TmdbProcessor } from './adapters/tmdb.processor';
 import { TMDB_QUEUE } from './adapters/tmdb.types';
+import { RebrickableAdapter } from './rebrickable/rebrickable.adapter';
 import {
   SOURCE_ADAPTERS,
   SourceSnapshotService,
@@ -52,14 +53,16 @@ import { TokenClientService } from './token-client.service';
     MalProcessor,
     TmdbAdapter,
     TmdbProcessor,
+    RebrickableAdapter,
     {
       provide: SOURCE_ADAPTERS,
       useFactory: (
         discogs: DiscogsAdapter,
         mal: MalAdapter,
         tmdb: TmdbAdapter,
-      ) => [discogs, mal, tmdb],
-      inject: [DiscogsAdapter, MalAdapter, TmdbAdapter],
+        rebrickable: RebrickableAdapter,
+      ) => [discogs, mal, tmdb, rebrickable],
+      inject: [DiscogsAdapter, MalAdapter, TmdbAdapter, RebrickableAdapter],
     },
   ],
   exports: [

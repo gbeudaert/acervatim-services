@@ -14,9 +14,13 @@ export default tseslint.config(
     },
     rules: {
       '@typescript-eslint/no-explicit-any': 'error',
+      // `varsIgnorePattern` autant qu'`argsIgnorePattern` : le patron
+      // `const { champ: _deprecated, ...rest } = v` sert a RETIRER une cle, la variable
+      // n'a par construction pas d'usage. Sans cette ligne, la seule facon de le taire
+      // serait un commentaire de desactivation a chaque occurrence.
       '@typescript-eslint/no-unused-vars': [
         'error',
-        { argsIgnorePattern: '^_' },
+        { argsIgnorePattern: '^_', varsIgnorePattern: '^_' },
       ],
       // Les decorateurs Nest reposent sur des classes vides (DTO Zod) et des
       // constructeurs uniquement parametres : ces deux regles produisent du bruit.

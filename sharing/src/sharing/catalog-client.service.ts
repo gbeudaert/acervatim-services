@@ -16,6 +16,7 @@ import {
 const CATALOG_ENV_BY_TYPE: Record<CollectionTypeCode, string> = {
   manga: 'CATALOG_MANGA_BASE_URL',
   vinyl: 'CATALOG_VINYL_BASE_URL',
+  lego: 'CATALOG_LEGO_BASE_URL',
   movie: 'CATALOG_GENERIC_BASE_URL',
   book: 'CATALOG_GENERIC_BASE_URL',
   game: 'CATALOG_GENERIC_BASE_URL',

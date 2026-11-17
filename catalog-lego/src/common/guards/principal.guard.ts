@@ -53,13 +53,22 @@ export class PrincipalGuard implements CanActivate, OnModuleInit {
   }
 
   canActivate(ctx: ExecutionContext): boolean {
-    const req = ctx.switchToHttp().getRequest<Request>();
+    this.resolve(ctx.switchToHttp().getRequest<Request>());
+    return true;
+  }
+
+  /**
+   * Etablit l'identite et la pose sur la requete. Expose separement de `canActivate` parce
+   * que les catalogs doivent l'appliquer par **middleware** : leurs controleurs de domaine
+   * viennent de `@acervatim/catalog-core`, ou l'on ne peut pas poser de `@UseGuards`. Une
+   * seule implementation, deux points d'accroche.
+   */
+  resolve(req: Request): Principal {
     const principal =
       this.fromPrincipalHeader(req) ?? this.fromBearerToken(req);
-
     req.principal = principal;
     req.userId = principal.userId;
-    return true;
+    return principal;
   }
 
   private fromPrincipalHeader(req: Request): Principal | undefined {

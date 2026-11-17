@@ -169,6 +169,32 @@ describe('SearchService', () => {
     expect(res.data).toEqual([VINYL_ITEM]);
   });
 
+  it("recopie le meta de la source a cote de la pagination (scan LEGO : meta.barcodeLookup)", async () => {
+    const adapter = makeAdapter('lego', { items: [], nextCursor: null });
+    (adapter as unknown as { searchByBarcode: jest.Mock }).searchByBarcode = jest
+      .fn()
+      .mockResolvedValue({
+        items: [],
+        nextCursor: null,
+        meta: { barcodeLookup: 'pending' },
+      });
+    const svc = makeService([adapter]);
+    const res = await svc.search(
+      USER,
+      'lego',
+      { barcode: '5702016914320' },
+      undefined,
+      50,
+    );
+    expect(res).toEqual({
+      data: [],
+      meta: {
+        barcodeLookup: 'pending',
+        pagination: { nextCursor: null, limit: 50 },
+      },
+    });
+  });
+
   it('throw BadRequest si barcode fourni mais adapter sans searchByBarcode', async () => {
     const adapter = makeAdapter('vinyl', { items: [], nextCursor: null });
     // makeAdapter ne définit pas searchByBarcode → capacité absente.

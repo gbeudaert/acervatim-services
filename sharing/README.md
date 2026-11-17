@@ -57,7 +57,7 @@ L'ecran du proprietaire, lui, ne fait aucun appel au catalog : il peut afficher 
 jusqu'a la prochaine lecture par un membre.
 
 `type_code` n'est pas denormalise pour l'affichage mais pour le **routage** : sans lui,
-`sharing` devrait diffuser ses demandes de comptage aux trois catalogs au lieu de viser le bon.
+`sharing` devrait diffuser ses demandes de comptage aux quatre catalogs au lieu de viser le bon.
 
 ---
 

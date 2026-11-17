@@ -80,7 +80,7 @@ describe('AppController - sondes', () => {
       redis: true,
       registry: { collections: 2, resources: 2 },
     });
-    expect(report.services).toHaveLength(8);
+    expect(report.services).toHaveLength(9);
     expect(report.services.every((s) => s.reachable && s.ready)).toBe(true);
     expect(res.status).toHaveBeenCalledWith(200);
   });
@@ -96,7 +96,7 @@ describe('AppController - sondes', () => {
       db: false,
       registry: null,
     });
-    expect(report.services).toHaveLength(8);
+    expect(report.services).toHaveLength(9);
     expect(res.status).toHaveBeenCalledWith(503);
   });
 
@@ -157,7 +157,7 @@ describe('AppController - sondes', () => {
   it('interroge la sonde de disponibilite des services aval, au-dela de leur propre delai', async () => {
     const { ready, internal } = make();
     await ready();
-    expect(internal.request).toHaveBeenCalledTimes(8);
+    expect(internal.request).toHaveBeenCalledTimes(9);
     for (const [, path, opts] of internal.request.mock.calls as unknown as [
       string,
       string,

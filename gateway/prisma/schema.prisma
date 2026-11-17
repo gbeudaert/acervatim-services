@@ -28,7 +28,7 @@ model CollectionRegistry {
   collectionId String   @id @map("collection_id") @db.Char(36)
   /// Proprietaire. Colonne nue, sans FK : `users` appartient a `identity`.
   userId       String   @map("user_id") @db.Char(36)
-  /// `vinyl` | `manga` | `movie` | `book` | `game`. Designe le catalog cible.
+  /// `vinyl` | `manga` | `movie` | `book` | `game` | `lego`. Designe le catalog cible.
   typeCode     String   @map("type_code") @db.VarChar(32)
   updatedAt    DateTime @updatedAt @map("updated_at")
 

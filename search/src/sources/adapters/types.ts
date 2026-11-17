@@ -1,6 +1,7 @@
 import {
   CollectionTypeCode,
   ItemSourceCode,
+  LegoBarcodeLookup,
   UnifiedItem,
 } from '../../common/internal/contracts';
 
@@ -25,6 +26,17 @@ export interface AdapterContext {
 export interface AdapterSearchResult {
   items: UnifiedItem[];
   nextCursor: string | null;
+  /**
+   * Informations de reponse propres a une source, recopiees dans le `meta` de `GET /v1/search`
+   * a cote de la pagination. Champ **additif** du contrat public : un client qui l'ignore ne
+   * perd rien.
+   */
+  meta?: AdapterSearchMeta;
+}
+
+export interface AdapterSearchMeta {
+  /** Scan LEGO : d'ou vient la reponse, et si un nouveau scan a un sens (`rebrickable`). */
+  barcodeLookup?: LegoBarcodeLookup;
 }
 
 /**

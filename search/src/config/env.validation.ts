@@ -40,6 +40,12 @@ export const EnvSchema = z.object({
    */
   CATALOG_MANGA_BASE_URL: z.string().url().optional(),
   BILLING_BASE_URL: z.string().url().optional(),
+  /**
+   * Catalogue LEGO de reference (`rebrickable-data`, routes `/internal/*`). Absent, la
+   * recherche `type=lego` et le snapshot d'une source `rebrickable` repondent 503 ; le reste
+   * du service n'en depend pas.
+   */
+  REBRICKABLE_DATA_BASE_URL: z.string().url().optional(),
 
   // --- Cles serveur des sources (repli premium) -------------------------------
   DISCOGS_CONSUMER_KEY: z.string().optional(),

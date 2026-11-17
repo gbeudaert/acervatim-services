@@ -74,8 +74,9 @@ l'echange avec une erreur generique.
 ## 4. Cles personnelles (BYOT)
 
 `PUT|DELETE /v1/sources/:provider/token`, generalisation du `/v1/sources/tmdb/token` du
-monolithe : `catalog-lego` sert deja la meme forme pour Rebrickable, et une route par source
-aurait fait diverger deux implementations du meme geste.
+monolithe : une route par source aurait fait diverger deux implementations du meme geste.
+L'ancien `catalog-lego` servait la meme forme pour Rebrickable ; refait le 2026-11-17, il n'a
+plus aucune cle personnelle.
 
 La liste blanche des providers acceptes n'est pas cosmetique. Sans elle, la route accepterait
 n'importe quel nom et remplirait `oauth_credentials` de lignes qu'aucun adapter ne lira - au

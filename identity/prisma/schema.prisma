@@ -51,7 +51,8 @@ model AuditLog {
 
 // ---------- Types de collection ----------
 
-/// Table de constantes : `vinyl` | `manga` | `movie` | `book` | `game`.
+/// Table de constantes : `vinyl` | `manga` | `movie` | `book` | `game` | `lego` (migration
+/// `20261117000000_lego_type`).
 ///
 /// Elle reste ici parce que c'est un referentiel transverse, mais **les catalogs n'y font
 /// plus de jointure** : dans le monolithe, `Collection.typeId` etait une FK vers cette

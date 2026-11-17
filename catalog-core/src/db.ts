@@ -5,7 +5,7 @@ import { PrismaClient } from '@prisma/client';
  *
  * `catalog-core` est compile **dans le contexte de son consommateur** (cf. le README) : le
  * `@prisma/client` importe ici est celui que le service a genere depuis son propre
- * `schema.prisma`. Les trois catalogs ayant des modeles identiques - `Collection`,
+ * `schema.prisma`. Les quatre catalogs ayant des modeles identiques - `Collection`,
  * `CollectionNode`, `Item` -, le meme code type-checke contre les trois clients.
  *
  * C'est ce qui permet de tenir l'invariant du 1 de architecture-microservices.md - « aucune

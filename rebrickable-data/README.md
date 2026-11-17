@@ -13,15 +13,16 @@ Base de reference du catalogue LEGO : sets, themes, figurines et codes-barres.
 
 ## 1. Pourquoi ce service
 
-L'index LEGO de `catalog-lego` se construit en parcourant l'API Rebrickable page par page. Deux
-problemes : la documentation de l'API renvoie aux CSV pour un catalogue complet, et les CGU
+L'ancien `catalog-lego` construisait son index LEGO en parcourant l'API Rebrickable page par
+page. Deux problemes : la documentation de l'API renvoie aux CSV pour un catalogue complet, et les CGU
 (5.3) n'autorisent l'automatisation que pour la page Downloads. Il manquait par ailleurs une base
 qui soit **la** reference des sets, au lieu d'un index rempli au fil des recherches.
 
 `rebrickable-data` est cette base. Il ne connait aucun utilisateur et ne repond qu'a ses voisins.
-Son consommateur sera `search`, par un adapter `rebrickable` (action C7 du plan, conception
-F10) : la recherche LEGO de l'app passera par `GET /v1/search?type=lego`, sans appel externe
-depuis `search`.
+Son consommateur est `search`, par l'adapter `rebrickable` (2026-11-17) : la recherche LEGO de
+l'app passe par `GET /v1/search?type=lego`, sans appel externe depuis `search`. Les collections
+des utilisateurs sont dans `catalog-lego`, refait sur `catalog-core`, qui n'appelle ni
+Rebrickable ni Brickset.
 
 ---
 
@@ -160,10 +161,8 @@ Details en cas d'erreur HTTP.
 Sans `BRICKSET_API_KEY`, `lego-scan` rend `lookup: 'disabled'` : le catalogue est complet, sans
 codes-barres.
 
-`BRICKSET_API_KEY` n'est renseignee **que** dans le `.env` de la constellation, et laissee vide
-dans `catalog-lego/.env` : deux services sur la meme cle se partageraient le quota du jour, et
-chacun croirait disposer de tout. Le `catalog-lego` actuel sera remplace par un clone de
-`catalog-vinyl` sans aucun acces a Brickset (action C7).
+`BRICKSET_API_KEY` n'est lue que par ce service : aucun autre de la constellation n'appelle
+Brickset.
 
 Sur un volume MariaDB cree avant ce service, `db/init/01-schemas.sql` n'est pas rejoue : c'est
 `prisma migrate deploy`, au demarrage du conteneur, qui cree `acv_rebrickable`.
@@ -172,12 +171,8 @@ Sur un volume MariaDB cree avant ce service, `db/init/01-schemas.sql` n'est pas 
 
 ## 5. Reste a faire
 
-- **Brancher `search`** (action C7) : un adapter `rebrickable` lit `/internal/sets`,
-  `/internal/sets/by-barcode/:code` (en laissant 8 s a cette route) et `/internal/sets/:setNum`,
-  pour servir `GET /v1/search?type=lego` ; `REBRICKABLE_DATA_BASE_URL` s'ajoute alors au
-  ConfigMap.
-- **Deploiement** : declare dans `deploy/` (dixieme conteneur du pod, migre par
-  `acervatim-migrate`, secret `DATABASE_URL_REBRICKABLE_DATA`), sans `BRICKSET_API_KEY` tant que
-  l'accord de Brickset est `pending` - voir `../deploy/README.md` (8).
+- **Deploiement** : declare dans `deploy/` (conteneur du pod, migre par `acervatim-migrate`,
+  secret `DATABASE_URL_REBRICKABLE_DATA`, lu par `search` via `REBRICKABLE_DATA_BASE_URL`), sans
+  `BRICKSET_API_KEY` tant que l'accord de Brickset est `pending` - voir `../deploy/README.md` (8).
 - **Brickset n'a jamais ete eprouve contre l'API reelle** : aucune cle n'est configuree. Le
   premier appel verifiera aussi que `query` trouve un set par son code-barres (2.2).

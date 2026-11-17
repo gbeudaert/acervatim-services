@@ -1,8 +1,11 @@
-// Schema du service catalogue LEGO. Schema logique dedie (`acv_cat_lego`) sur l'instance
-// MariaDB partagee : AUCUNE relation ne franchit la frontiere du service (cf.
-// ../acervatim-docs/agent/backend/architecture-microservices.md, invariant central).
-// `userId` est donc une colonne opaque sans `@relation` vers `users` : cette table
-// appartient a `identity`.
+// Schema d'un service catalog. Schema logique dedie (`acv_cat_<type>`) sur l'instance MariaDB
+// partagee : AUCUNE relation ne franchit la frontiere du service (cf.
+// ../../../acervatim-docs/agent/backend/architecture-microservices.md, invariant central).
+//
+// **Ce fichier est identique dans les quatre catalogs**, au nom de la base pres. C'est le
+// pendant de `catalog-core` cote donnees : les trois types partagent le meme modele, seul le
+// profil applicatif differe. Le garder identique est ce qui permet a `catalog-core` d'etre
+// compile contre les trois clients Prisma generes.
 
 generator client {
   provider = "prisma-client-js"
@@ -13,110 +16,102 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-/// Cache generique des reponses sources (meme contrat que `api_cache` du monolithe).
-/// Cle publique, sans `userId` : les reponses sont partageables entre utilisateurs
-/// sans fuite (les sources LEGO n'exposent aucune donnee de compte).
-model ApiCache {
-  cacheKey  String   @id @map("cache_key") @db.VarChar(255)
-  payload   Json
-  fetchedAt DateTime @map("fetched_at")
-  expiresAt DateTime @map("expires_at")
-
-  @@index([expiresAt])
-  @@map("api_cache")
-}
-
-/// Arborescence des themes Rebrickable (Technic, Architecture, City...).
-/// Synchronisee par `ThemeSyncService` : c'est elle qui rend le filtre
-/// `?theme=technic` resoluble sans coder en dur un `theme_id`.
-model LegoTheme {
-  /// `id` Rebrickable, repris tel quel : c'est la cle de jointure vers `/lego/sets/?theme_id=`.
-  id       Int     @id
-  name     String  @db.VarChar(255)
-  /// Forme normalisee du nom, utilisee par l'API publique (`technic`, `architecture`).
-  slug     String  @db.VarChar(255)
-  parentId Int?    @map("parent_id")
-  /// Chemin complet depuis la racine ("Technic / Star Wars"), pre-calcule au sync :
-  /// evite N remontees d'arbre a chaque resultat de recherche.
-  path     String  @db.VarChar(512)
-  /// Profondeur dans l'arbre (0 = racine). Sert a n'exposer que les themes de tete
-  /// dans le selecteur de l'app sans re-parcourir l'arbre.
-  depth    Int     @default(0)
-  syncedAt DateTime @updatedAt @map("synced_at")
-
-  @@unique([slug])
-  @@index([parentId])
-  @@map("lego_themes")
-}
-
-/// Index local du catalogue LEGO : miroir partiel de Rebrickable enrichi des codes-barres
-/// Brickset. Sa raison d'etre est le **scan** : aucune API LEGO gratuite ne resout un EAN/UPC
-/// en set, et le quota Brickset (100 appels `getSets`/jour sur une cle libre) interdit de
-/// l'interroger en ligne. On moissonne donc hors ligne (cf. `HarvestRun`) et la recherche par
-/// code-barres devient une lecture locale, a cout reseau nul.
-model LegoSet {
-  /// Numero de set canonique Rebrickable, suffixe de version inclus : "42131-1".
-  setNum      String   @id @map("set_num") @db.VarChar(32)
-  name        String   @db.VarChar(512)
-  year        Int?
-  themeId     Int?     @map("theme_id")
-  numParts    Int?     @map("num_parts")
-  imageUrl    String?  @map("image_url") @db.VarChar(1024)
-  /// EAN-13 de la boite (Brickset). Non unique : une meme reference peut porter
-  /// plusieurs conditionnements regionaux, et deux sets peuvent partager un code errone.
-  ean         String?  @db.VarChar(14)
-  /// UPC-A nord-americain (Brickset).
-  upc         String?  @db.VarChar(14)
-  /// Identifiant interne Brickset, garde pour rejouer un rapprochement sans re-moissonner.
-  bricksetId  Int?     @map("brickset_id")
-  /// Provenance de la ligne : quelles sources ont contribue ("rebrickable", "rebrickable+brickset").
-  sources     String   @default("rebrickable") @db.VarChar(64)
+/// Une collection de l'utilisateur.
+///
+/// Deux differences avec le monolithe, toutes deux imposees par le decoupage :
+///  - **plus de relation vers `User`** : `users` appartient a `identity`, donc plus de cascade
+///    de suppression - c'est la saga RGPD qui la remplace (3.4) ;
+///  - **`typeCode` remplace `typeId`** : la FK pointait `collection_types`, qui appartient
+///    desormais a `identity`. Le code stable est stocke en clair, ce qui supprime a la fois la
+///    FK inter-schemas et une jointure sur chaque lecture. La reponse de l'API ne change pas :
+///    elle exposait deja le code, pas l'UUID.
+model Collection {
+  id          String   @id @default(uuid()) @db.Char(36)
+  /// Colonne nue, sans FK.
+  userId      String   @map("user_id") @db.Char(36)
+  /// `vinyl` | `manga` | `movie` | `book` | `game` | `lego`.
+  typeCode    String   @map("type_code") @db.VarChar(32)
+  name        String   @db.VarChar(255)
+  description String?  @db.Text
+  /// Denormalise, maintenu dans la meme transaction que la creation ou la suppression d'un
+  /// item. Reste local au catalog - il ne compte que SES items, et c'est exact : une
+  /// collection appartient a un seul type, donc a un seul catalog.
+  itemCount   Int      @default(0) @map("item_count")
+  createdAt   DateTime @default(now()) @map("created_at")
   updatedAt   DateTime @updatedAt @map("updated_at")
 
-  @@index([ean])
-  @@index([upc])
-  @@index([themeId])
-  @@index([name(length: 191)])
-  @@map("lego_sets")
+  items Item[]
+  nodes CollectionNode[]
+
+  /// L'ordre de `GET /v1/collections` : `(createdAt desc, id desc)`. **Le meme que celui du
+  /// scatter-gather du gateway** (3.7) - changer l'un sans l'autre casse la fusion en silence.
+  @@index([userId, createdAt])
+  @@index([typeCode])
+  @@map("collections")
 }
 
-/// Trace d'un moissonnage de l'index. Rend la campagne **reprenable** : sous un quota de
-/// 100 appels/jour, un plein catalogue s'etale sur plusieurs jours et doit reprendre ou il
-/// s'est arrete, pas au debut.
-model HarvestRun {
-  id            String    @id @default(uuid()) @db.Char(36)
-  source        String    @db.VarChar(32)
-  /// `full` (tout le catalogue) ou `incremental` (`updatedSince` cote Brickset).
-  mode          String    @db.VarChar(16)
-  state         String    @default("running") @db.VarChar(16)
-  startedAt     DateTime  @default(now()) @map("started_at")
-  finishedAt    DateTime? @map("finished_at")
-  /// Position de reprise : numero de page Brickset deja consommee.
-  lastPage      Int       @default(0) @map("last_page")
-  /// Borne haute de la campagne incrementale suivante.
-  watermark     DateTime? @map("watermark")
-  callsUsed     Int       @default(0) @map("calls_used")
-  setsUpserted  Int       @default(0) @map("sets_upserted")
-  lastError     String?   @map("last_error") @db.Text
-
-  @@index([source, state])
-  @@map("harvest_runs")
-}
-
-/// Cle API personnelle d'un utilisateur (BYOT), chiffree AES-256-GCM.
-/// PROVISOIRE : dans la cible, les credentials externes vivent dans le service
-/// `connections` et se resolvent par `GET /internal/token/:userId/:provider`. La table
-/// est ici pour que le service tienne debout seul ; `TokenResolverService` est deja
-/// derriere un port pour que la bascule ne touche qu'une implementation.
-model SourceCredential {
+/// Un item : un tome (manga), un disque (vinyle), une boite (LEGO), un film...
+model Item {
   id           String   @id @default(uuid()) @db.Char(36)
-  /// UUID opaque venu d'`identity`. Aucune FK : `users` n'est pas dans ce schema.
+  collectionId String   @map("collection_id") @db.Char(36)
+  /// Denormalise pour les requetes par utilisateur (plafonds, export RGPD, recherche
+  /// `items[in]`). Colonne nue, sans FK.
   userId       String   @map("user_id") @db.Char(36)
-  provider     String   @db.VarChar(32)
-  encryptedKey String   @map("encrypted_key") @db.Text
+  /// Serie (manga) ; `null` pour un type plat (vinyle, LEGO) ou un tome detache.
+  nodeId       String?  @map("node_id") @db.Char(36)
+  /// Numero de tome ; `null` pour un hors-serie ou un type plat.
+  volume       Int?
+  /// VERITE curee par l'utilisateur, validee par le profil du type.
+  unifiedData  Json     @map("unified_data")
+  /// `[{ provider, externalId, rawData, fetchedAt }]`. `rawData` a `null` = reference sans
+  /// snapshot (provider sans adapter).
+  sources      Json     @default("[]")
+  /// Perso et subjectif : note, prix, derniere ecoute, **statut de possession**.
+  ///
+  /// C'est ce dernier qui rend le 3.1 possible : le statut d'un item vit ici, donc chez le
+  /// catalog, donc le filtrage par portee de partage est un predicat local - `sharing` n'a
+  /// plus besoin de lire `items`.
+  userData     Json     @default("{}") @map("user_data")
   createdAt    DateTime @default(now()) @map("created_at")
   updatedAt    DateTime @updatedAt @map("updated_at")
 
-  @@unique([userId, provider])
-  @@map("source_credentials")
+  collection Collection      @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  node       CollectionNode? @relation(fields: [nodeId], references: [id], onDelete: Cascade)
+
+  /// Un tome par (serie, volume). **Tient tel quel apres le decoupage** : `nodeId` n'existe
+  /// que pour les types hierarchiques et ne franchit jamais une frontiere de catalog (3.8).
+  @@unique([userId, nodeId, volume])
+  @@index([collectionId, createdAt])
+  @@index([nodeId])
+  @@map("items")
+}
+
+/// Noeud de hierarchie materialise : une serie (manga) est un noeud, ses tomes sont des items.
+///
+/// Un noeud porte ses **propres** `sources[]` (MAL ne connait que les series), independantes
+/// de celles de ses items (ISBN).
+model CollectionNode {
+  id           String   @id @default(uuid()) @db.Char(36)
+  collectionId String   @map("collection_id") @db.Char(36)
+  userId       String   @map("user_id") @db.Char(36)
+  parentId     String?  @map("parent_id") @db.Char(36)
+  /// `serie` | `set` - la cle du niveau dans le profil de type.
+  level        String   @db.VarChar(32)
+  unifiedData  Json     @map("unified_data")
+  sources      Json     @default("[]")
+  /// Note et commentaire de l'utilisateur sur la serie.
+  userData     Json     @default("{}") @map("user_data")
+  /// Survit a `ownedCount = 0` : une serie desiree sans aucun tome doit continuer d'exister.
+  isWishlist   Boolean  @default(false) @map("is_wishlist")
+  createdAt    DateTime @default(now()) @map("created_at")
+  updatedAt    DateTime @updatedAt @map("updated_at")
+
+  collection Collection       @relation(fields: [collectionId], references: [id], onDelete: Cascade)
+  parent     CollectionNode?  @relation("NodeTree", fields: [parentId], references: [id], onDelete: Cascade)
+  children   CollectionNode[] @relation("NodeTree")
+  items      Item[]
+
+  @@index([collectionId, level])
+  @@index([parentId])
+  @@map("collection_nodes")
 }

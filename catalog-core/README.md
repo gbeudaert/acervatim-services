@@ -1,6 +1,6 @@
 # catalog-core
 
-Le CRUD collections / noeuds / items, **mutualise par les trois services `catalog-*`**.
+Le CRUD collections / noeuds / items, **mutualise par les quatre services `catalog-*`**.
 
 Ce n'est pas un service : c'est la bibliotheque `libs/catalog-core` que l'architecture prevoit
 (`../../../acervatim-docs/agent/backend/architecture-microservices.md`, 1 et 2).
@@ -9,18 +9,19 @@ Ce n'est pas un service : c'est la bibliotheque `libs/catalog-core` que l'archit
 
 ## 1. Pourquoi elle existe
 
-`catalog-manga` et `catalog-vinyl` partagent l'essentiel de leur code. Le CRUD est identique ;
-ce qui differe tient dans un `itemSchema`, une `toListProjection`, une `hierarchy` (vide pour
-le vinyle) et un `reconcileOnUpdate` optionnel - c'est-a-dire dans un `CollectionTypeProfile`.
+`catalog-generic`, `catalog-manga`, `catalog-vinyl` et `catalog-lego` partagent l'essentiel de
+leur code. Le CRUD est identique ; ce qui differe tient dans un `itemSchema`, une
+`toListProjection`, une `hierarchy` (vide pour le vinyle et le LEGO) et un `reconcileOnUpdate`
+optionnel - c'est-a-dire dans un `CollectionTypeProfile`.
 
 Le monolithe en faisait deja un point d'extension propre (`collections/types/registry.ts`), et
 c'est precisement ce qui rend le decoupage par type **possible** : la frontiere existait, il
 s'agissait de la faire passer du `Record` en memoire au reseau.
 
 Recopier ce CRUD dans chaque catalog creerait exactement la divergence que le decoupage cherche
-a eviter : trois implementations du meme code, qui derivent au premier correctif applique d'un
-seul cote. C'est l'argument que `catalog-lego` avance pour ne **pas** forker son CRUD, et il
-vaut a plus forte raison ici, ou les trois services existent en meme temps.
+a eviter : plusieurs implementations du meme code, qui derivent au premier correctif applique
+d'un seul cote. C'est pour cela que `catalog-lego`, d'abord ecrit comme une stack autonome, a ete
+refait sur cette bibliotheque le 2026-11-17 au lieu de garder son propre code.
 
 Resultat : un service catalog se reduit a trois choses - son schema Prisma, son socle
 technique, et un fichier `profiles.ts` de dix lignes.
@@ -34,8 +35,8 @@ technique, et un fichier `profiles.ts` de dix lignes.
 La raison est Prisma : `catalog-core` manipule `Collection`, `CollectionNode` et `Item`, dont
 les types sont **generes** par chaque service depuis son propre `schema.prisma`. Une
 bibliotheque pre-compilee devrait choisir un client ; compilee dans le consommateur, elle est
-typee contre le sien. Les trois catalogs ayant des modeles identiques, le meme code type-checke
-contre les trois.
+typee contre le sien. Les catalogs ayant des modeles identiques, le meme code type-checke
+contre tous.
 
 Concretement :
 
@@ -133,7 +134,7 @@ Le CRUD est celui du monolithe. Quatre points ont bouge, tous documentes sur pla
   `limits.service.ts`, mais le chiffre n'a pas ete rediscute.
 - **Tests du CRUD.** Le monolithe en avait ; ils n'ont pas ete portes, parce qu'ils s'appuyaient
   sur `PrismaService` et les gardes du monolithe. Ils doivent revenir contre le port
-  `CATALOG_DB`, ou ils vaudront pour les trois catalogs a la fois - c'est tout l'interet.
+  `CATALOG_DB`, ou ils vaudront pour tous les catalogs a la fois - c'est tout l'interet.
 - **Le jour ou un type de `catalog-generic` merite un vrai profil**, il se declare dans son
   `profiles.ts` ; s'il devient assez lourd pour justifier son propre processus, il quitte ce
   fichier pour un service a lui, sans que ce CRUD bouge.

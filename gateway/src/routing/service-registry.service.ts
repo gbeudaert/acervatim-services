@@ -20,7 +20,8 @@ export type ServiceName =
   | 'search'
   | 'catalog-generic'
   | 'catalog-manga'
-  | 'catalog-vinyl';
+  | 'catalog-vinyl'
+  | 'catalog-lego';
 
 /**
  * Quel catalog sert quel type de collection. `movie`, `book` et `game` partagent
@@ -30,6 +31,7 @@ export type ServiceName =
 export const CATALOG_BY_TYPE: Record<CollectionTypeCode, ServiceName> = {
   manga: 'catalog-manga',
   vinyl: 'catalog-vinyl',
+  lego: 'catalog-lego',
   movie: 'catalog-generic',
   book: 'catalog-generic',
   game: 'catalog-generic',
@@ -39,6 +41,7 @@ export const CATALOG_BY_TYPE: Record<CollectionTypeCode, ServiceName> = {
 export const ALL_CATALOGS: ServiceName[] = [
   'catalog-manga',
   'catalog-vinyl',
+  'catalog-lego',
   'catalog-generic',
 ];
 
@@ -51,6 +54,7 @@ const ENV_KEY: Record<ServiceName, string> = {
   'catalog-generic': 'CATALOG_GENERIC_BASE_URL',
   'catalog-manga': 'CATALOG_MANGA_BASE_URL',
   'catalog-vinyl': 'CATALOG_VINYL_BASE_URL',
+  'catalog-lego': 'CATALOG_LEGO_BASE_URL',
 };
 
 @Injectable()

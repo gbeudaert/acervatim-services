@@ -5,12 +5,9 @@
 # `acervatim-secrets.yaml` (non versionne) :
 #   cat ~/acervatim/acervatim-secrets.yaml deploy/acervatim.yaml > ~/acervatim/acervatim.yaml
 #
-# Les dix services partagent une pile reseau (meme pod) : ils se joignent en `localhost`,
+# Les onze services partagent une pile reseau (meme pod) : ils se joignent en `localhost`,
 # d'ou les `*_BASE_URL` ci-dessous. C'est la seule difference de configuration avec la stack de
 # developpement, ou docker-compose les separe et les fait se resoudre par nom de service.
-#
-# `catalog-lego` n'est PAS ENCORE dans ce manifeste : il doit etre refait, puis y entrer avant
-# la bascule, voir deploy/README.md (8).
 ---
 apiVersion: v1
 kind: ConfigMap
@@ -20,13 +17,9 @@ data:
   NODE_ENV: production
 
   # --- Adressage interne ----------------------------------------------------------------
-  # `localhost` parce que les dix conteneurs sont dans le meme pod. Un service qui sortirait
+  # `localhost` parce que les onze conteneurs sont dans le meme pod. Un service qui sortirait
   # du pod deviendrait `http://<son-conteneur>:<port>` et rejoindrait le reseau
   # `acervatim-services` - c'est la seule ligne a changer, de chaque cote.
-  #
-  # Pas de ligne pour `rebrickable-data` (localhost:3190), et c'est voulu : aucun service du
-  # pod ne l'appelle aujourd'hui, donc aucun ne lit une telle variable. Elle s'ajoutera ici en
-  # meme temps que son premier consommateur, pas avant.
   IDENTITY_BASE_URL: http://localhost:3110
   BILLING_BASE_URL: http://localhost:3120
   CONNECTIONS_BASE_URL: http://localhost:3130
@@ -35,6 +28,10 @@ data:
   CATALOG_GENERIC_BASE_URL: http://localhost:3160
   CATALOG_MANGA_BASE_URL: http://localhost:3170
   CATALOG_VINYL_BASE_URL: http://localhost:3180
+  CATALOG_LEGO_BASE_URL: http://localhost:3220
+  # Catalogue LEGO de reference, lu par `search` (recherche `type=lego`). Le gateway ne le
+  # route pas.
+  REBRICKABLE_DATA_BASE_URL: http://localhost:3190
   GATEWAY_BASE_URL: http://localhost:3100
 
   # Redis et MariaDB sont HORS du pod : resolus par le DNS Podman du reseau partage.
@@ -53,7 +50,7 @@ data:
   # L'y inscrire laisserait, a chaque suppression de compte, un job `failed` rejoue sans fin
   # sur une route qui n'existe pas.
   SAGA_PARTICIPANTS: >-
-    billing=http://localhost:3120,connections=http://localhost:3130,sharing=http://localhost:3140,search=http://localhost:3150,catalog-generic=http://localhost:3160,catalog-manga=http://localhost:3170,catalog-vinyl=http://localhost:3180
+    billing=http://localhost:3120,connections=http://localhost:3130,sharing=http://localhost:3140,search=http://localhost:3150,catalog-generic=http://localhost:3160,catalog-manga=http://localhost:3170,catalog-vinyl=http://localhost:3180,catalog-lego=http://localhost:3220
   SAGA_ALERT_AFTER_HOURS: '24'
 
   # --- Reglages du gateway --------------------------------------------------------------
@@ -91,9 +88,9 @@ metadata:
 spec:
   restartPolicy: Always
 
-  # Les migrations des dix schemas, AVANT que le moindre service ne demarre. Une image
+  # Les migrations des onze schemas, AVANT que le moindre service ne demarre. Une image
   # unique les joue en sequence (cf. deploy/migrate.sh) ; son echec empeche le pod de
-  # demarrer, ce qui est preferable a dix services tournant sur un schema a moitie migre.
+  # demarrer, ce qui est preferable a onze services tournant sur un schema a moitie migre.
   initContainers:
     - name: migrate
       image: localhost/acervatim-migrate:0.1.0
@@ -116,7 +113,7 @@ spec:
     # ------------------------------------------------------------------ point d'entree
     - name: gateway
       image: localhost/acervatim-gateway:0.1.0
-      # **Le seul port publie sur l'hote.** Les neuf autres services ne sont joignables que
+      # **Le seul port publie sur l'hote.** Les dix autres services ne sont joignables que
       # depuis l'interieur du pod : c'est ce qui applique par construction l'invariant du 6 -
       # aucune route `/internal/*` n'est exposee vers l'exterieur.
       ports:
@@ -353,11 +350,39 @@ spec:
         capabilities:
           drop: ['ALL']
 
+    # Collections LEGO des utilisateurs (2026-11-17) : clone de catalog-vinyl, memes besoins
+    # memoire. Aucune cle de source, aucun appel externe ; le catalogue des sets est dans
+    # rebrickable-data, lu par search.
+    - name: catalog-lego
+      image: localhost/acervatim-catalog-lego:0.1.0
+      env:
+        - name: PORT
+          value: '3220'
+        - name: DATABASE_URL
+          valueFrom:
+            secretKeyRef:
+              name: acervatim-secrets
+              key: DATABASE_URL_CATALOG_LEGO
+      envFrom:
+        - configMapRef:
+            name: acervatim-config
+        - secretRef:
+            name: acervatim-secrets
+      resources:
+        requests:
+          memory: 160Mi
+        limits:
+          memory: 256Mi
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ['ALL']
+
     # ------------------------------------------------------------------ donnees de reference
     # Catalogue LEGO de reference (CSV publics de Rebrickable). Service INTERNE : aucun port
     # publie, aucune route au gateway - seules `/internal/*`, `/admin/*` et `/health*` existent,
     # joignables du pod uniquement. Aucune donnee d'utilisateur, donc absent de
-    # SAGA_PARTICIPANTS. Aucun service du pod ne l'appelle encore : cf. deploy/README.md (8).
+    # SAGA_PARTICIPANTS. Son consommateur est `search` (REBRICKABLE_DATA_BASE_URL).
     - name: rebrickable-data
       image: localhost/acervatim-rebrickable-data:0.1.0
       env:

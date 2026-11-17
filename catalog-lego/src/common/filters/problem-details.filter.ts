@@ -17,12 +17,21 @@ import { randomUUID } from 'crypto';
 import { Request, Response } from 'express';
 import { ZodValidationException } from 'nestjs-zod';
 import { ZodIssue } from 'zod';
-import { SourceTokenRequiredException } from '../sources/source-token-required.exception';
+import {
+  InvitationExhaustedException,
+  InvitationExpiredException,
+  PaymentRequiredException,
+  ShareCodeInvalidException,
+  SourceTokenRequiredException,
+  TechnicalLimitException,
+} from '../errors';
 
 /**
- * Les URI `type` sont celles du monolithe, a dessein : le gateway relaie ce corps tel quel
- * vers l'app, qui discrimine deja sur ces valeurs. Un service qui inventerait son propre
- * espace de noms casserait le contrat sans changer une seule signature.
+ * RFC 9457 (Problem Details). **Fichier strictement identique dans tous les services**, y
+ * compris pour des classes d'erreur qu'un service donne ne levera jamais : le gateway
+ * relaie ce corps tel quel vers l'app, qui discrimine deja sur ces URI `type`. Un service
+ * qui inventerait son propre espace de noms casserait le contrat sans changer une seule
+ * signature.
  */
 const TYPE_BASE = 'https://api.acervatim/probs';
 
@@ -34,6 +43,7 @@ interface ProblemDetails {
   instance: string;
   requestId: string;
   errors?: Array<{ field: string; code: string; message: string }>;
+  /** Extension member : source concernee par un `source-token-required`. */
   provider?: string;
 }
 
@@ -65,6 +75,21 @@ export function mapException(exception: unknown): Mapped {
       status: 401,
     };
   }
+  // Avant ConflictException : TechnicalLimitException en herite par le statut 409.
+  if (exception instanceof TechnicalLimitException) {
+    return {
+      type: `${TYPE_BASE}/technical-limit`,
+      title: 'Technical limit reached',
+      status: 409,
+    };
+  }
+  if (exception instanceof PaymentRequiredException) {
+    return {
+      type: `${TYPE_BASE}/payment-required`,
+      title: 'Payment required',
+      status: 402,
+    };
+  }
   if (exception instanceof SourceTokenRequiredException) {
     return {
       type: `${TYPE_BASE}/source-token-required`,
@@ -75,8 +100,30 @@ export function mapException(exception: unknown): Mapped {
   if (exception instanceof ForbiddenException) {
     return { type: `${TYPE_BASE}/forbidden`, title: 'Forbidden', status: 403 };
   }
+  // Avant NotFoundException : meme statut, URI plus precise.
+  if (exception instanceof ShareCodeInvalidException) {
+    return {
+      type: `${TYPE_BASE}/share-code-invalid`,
+      title: 'Share code invalid',
+      status: 404,
+    };
+  }
   if (exception instanceof NotFoundException) {
     return { type: `${TYPE_BASE}/not-found`, title: 'Not found', status: 404 };
+  }
+  if (exception instanceof InvitationExpiredException) {
+    return {
+      type: `${TYPE_BASE}/invitation-expired`,
+      title: 'Invitation expired',
+      status: 410,
+    };
+  }
+  if (exception instanceof InvitationExhaustedException) {
+    return {
+      type: `${TYPE_BASE}/invitation-exhausted`,
+      title: 'Invitation exhausted',
+      status: 409,
+    };
   }
   if (exception instanceof ConflictException) {
     return { type: `${TYPE_BASE}/conflict`, title: 'Conflict', status: 409 };

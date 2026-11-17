@@ -1,10 +1,10 @@
-# Image de migration de la constellation. **Une seule pour les dix schemas.**
+# Image de migration de la constellation. **Une seule pour les onze schemas.**
 #
-# Le monolithe utilisait une cible `--target migrate` dans son propre Dockerfile. A dix
-# services, cela ferait dix images de plus a construire, taguer et deployer ensemble, pour
-# dix invocations d'un meme CLI. Une image unique qui porte les dix dossiers `prisma/` et
+# Le monolithe utilisait une cible `--target migrate` dans son propre Dockerfile. A onze
+# services, cela ferait onze images de plus a construire, taguer et deployer ensemble, pour
+# onze invocations d'un meme CLI. Une image unique qui porte les onze dossiers `prisma/` et
 # les joue en sequence est plus simple a operer - et surtout, elle rend l'**ordre** des
-# migrations explicite et reproductible, ce que dix conteneurs independants ne garantissent
+# migrations explicite et reproductible, ce que onze conteneurs independants ne garantissent
 # pas.
 #
 # Elle ne contient aucun code applicatif : seulement le CLI prisma et les migrations SQL.
@@ -41,6 +41,7 @@ COPY search/prisma           ./schemas/search
 COPY catalog-generic/prisma  ./schemas/catalog-generic
 COPY catalog-manga/prisma    ./schemas/catalog-manga
 COPY catalog-vinyl/prisma    ./schemas/catalog-vinyl
+COPY catalog-lego/prisma     ./schemas/catalog-lego
 COPY rebrickable-data/prisma ./schemas/rebrickable-data
 
 COPY deploy/migrate.sh ./migrate.sh

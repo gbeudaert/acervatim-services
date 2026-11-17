@@ -6,7 +6,7 @@
 #
 # Il porte deux resolutions de nom, et deux seulement :
 #   - le pod applicatif -> `acervatim-db` et `acervatim-redis` ;
-#   - rien d'autre. Les dix services se parlent en `localhost` (meme pod), et personne
+#   - rien d'autre. Les onze services se parlent en `localhost` (meme pod), et personne
 #     d'autre n'a de raison d'entrer.
 #
 # Installation (rootless) :

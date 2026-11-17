@@ -39,3 +39,7 @@ openapi.json
 # BMad Method - installation partagee, branchee par jonctions
 /_bmad/
 /_bmad-output/
+
+# Jonction locale vers ../catalog-core, recreee par `../scripts/dev.ps1 link-core`.
+# Dans le conteneur, le dossier est copie/monte au meme endroit (voir Dockerfile.dev).
+/catalog-core/

@@ -48,6 +48,7 @@ export const EnvSchema = z.object({
   CATALOG_GENERIC_BASE_URL: z.string().url().optional(),
   CATALOG_MANGA_BASE_URL: z.string().url().optional(),
   CATALOG_VINYL_BASE_URL: z.string().url().optional(),
+  CATALOG_LEGO_BASE_URL: z.string().url().optional(),
 
   // Budget de temps d'un appel proxifie. Plus genereux que les 2 s des appels /internal/* :
   // celui-ci porte une requete utilisateur complete, y compris une recherche externe qui

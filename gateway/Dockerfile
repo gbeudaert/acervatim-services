@@ -11,7 +11,7 @@
 # deploiement, jamais copier une image cross-arch.
 #
 # **Ce conteneur n'execute aucune migration** : le CLI prisma est une devDependency, absente
-# de l'image runtime. Les migrations des neuf services sont jouees par une image dediee et
+# de l'image runtime. Les migrations de tous les services sont jouees par une image dediee et
 # unique - `deploy/Dockerfile.migrate` -, lancee en initContainer par le pod Kubernetes.
 
 # ---------- Etape 1 : build (dependances completes + compilation) ----------

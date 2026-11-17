@@ -16,8 +16,8 @@ plafonds - vient de [`catalog-core`](../catalog-core/README.md). Ce service n'ap
 
 | Fichier | Role |
 |---|---|
-| [`src/profiles.ts`](src/profiles.ts) | **Les types qu'il sert.** C'est la seule chose qui le distingue des deux autres catalogs. |
-| [`prisma/schema.prisma`](prisma/schema.prisma) | Son schema - identique aux deux autres, sur sa propre base. |
+| [`src/profiles.ts`](src/profiles.ts) | **Les types qu'il sert.** C'est la seule chose qui le distingue des autres catalogs. |
+| [`prisma/schema.prisma`](prisma/schema.prisma) | Son schema - identique a celui des autres catalogs, sur sa propre base. |
 | `src/common/`, `src/main.ts`, `src/app.module.ts` | Le socle technique, commun a toute la constellation. |
 
 C'est exactement ce que le 2 de l'architecture annonce : ce qui differe entre deux catalogs
@@ -32,7 +32,7 @@ d'un snapshot MAL. Sa `toListProjection` compose le titre d'un tome sans titre p
 (`{serie} - T.{volume}`) - ce qui suppose de lire le noeud parent, d'ou le `node` de la ligne
 de projection.
 
-Consequences visibles sur ce catalog, et sur lui seul parmi les trois :
+Consequences visibles sur ce catalog, et sur lui seul parmi les quatre :
 `POST /v1/collections/:id/nodes` a un sens, `nodeId` et `volume` sont acceptes sur un item, et
 `GET /v1/collections/:id` rend un resume `hierarchy` non vide.
 
@@ -94,7 +94,7 @@ toute la cible.
 
 - **Porter les tests du CRUD** du monolithe. Ils s'appuyaient sur son `PrismaService` et ses
   gardes ; ils doivent revenir dans `catalog-core`, contre le port `CATALOG_DB` - ou ils
-  vaudront pour les trois catalogs a la fois.
+  vaudront pour les quatre catalogs a la fois.
 - **Mesurer p95 de `GET /v1/collections/:id/items`**, l'un des deux points de non-regression
   que le 4 exige avant tout passage de palier.
 - **Arbitrer le plafond technique (3.5)** : il ne compte plus que les collections de ce

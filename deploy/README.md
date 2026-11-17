@@ -14,16 +14,15 @@ Meme famille de conventions que le monolithe (`../../../acervatim-backend/deploy
 | [`acervatim.yaml`](acervatim.yaml) | **Le manifeste.** ConfigMap + Pod : 1 initContainer de migration, 10 conteneurs applicatifs. |
 | [`acervatim-secrets.example.yaml`](acervatim-secrets.example.yaml) | Gabarit du Secret. La copie remplie ne se versionne pas. |
 | [`acervatim-services.network`](acervatim-services.network) | Reseau Podman de la constellation. |
-| [`acervatim-db.container`](acervatim-db.container) | MariaDB - une instance, dix schemas. |
+| [`acervatim-db.container`](acervatim-db.container) | MariaDB - une instance, onze schemas. |
 | [`acervatim-redis.container`](acervatim-redis.container) | Redis - files BullMQ et cache premium. |
-| [`Dockerfile.migrate`](Dockerfile.migrate) + [`migrate.sh`](migrate.sh) | Image unique qui migre les dix schemas en sequence. |
-| [`build-images.ps1`](build-images.ps1) | Construit les onze images (dix services + migration). |
+| [`Dockerfile.migrate`](Dockerfile.migrate) + [`migrate.sh`](migrate.sh) | Image unique qui migre les onze schemas en sequence. |
+| [`build-images.ps1`](build-images.ps1) | Construit les douze images (onze services + migration). |
 
-Les dix services deployes : `gateway`, `identity`, `billing`, `connections`, `sharing`,
-`search`, `catalog-generic`, `catalog-manga`, `catalog-vinyl` et `rebrickable-data`.
-**`catalog-lego` n'en fait pas encore partie** : il doit etre refait, puis entrer dans le
-deploiement avant la bascule - voir le
-[8](#8-lego--ce-qui-est-deploye-et-ce-qui-reste-a-faire-avant-la-bascule).
+Les onze services deployes : `gateway`, `identity`, `billing`, `connections`, `sharing`,
+`search`, `catalog-generic`, `catalog-manga`, `catalog-vinyl`, `rebrickable-data` et
+`catalog-lego`. Les deux derniers forment la collection LEGO - voir le
+[8](#8-lego--deux-services).
 
 ---
 
@@ -45,19 +44,19 @@ deploiement avant la bascule - voir le
                             └───────────────────────────────────────┘
 ```
 
-### Un seul pod pour les dix services
+### Un seul pod pour les onze services
 
 Ils partagent une pile reseau et se joignent en `localhost:31xx`. Trois consequences, toutes
 voulues :
 
-- **un seul port publie sur l'hote** (3100). Les neuf autres services ne sont joignables que
+- **un seul port publie sur l'hote** (3100). Les dix autres services ne sont joignables que
   de l'interieur du pod, ce qui applique *par construction* l'invariant du 6 de
   l'architecture - « aucune route `/internal/*` n'est exposee vers l'exterieur » ;
-- **pas de DNS a faire fonctionner** entre dix conteneurs pour un deploiement mono-hote ;
+- **pas de DNS a faire fonctionner** entre onze conteneurs pour un deploiement mono-hote ;
 - **une seule unite a redemarrer** : jamais d'etat intermediaire ou la moitie de la
   constellation tourne dans la version precedente.
 
-Le prix : les dix redemarrent ensemble. Acceptable tant qu'ils sont livres ensemble ; le jour
+Le prix : les onze redemarrent ensemble. Acceptable tant qu'ils sont livres ensemble ; le jour
 ou l'un se deploie a son rythme, il sort dans son propre pod et se joint par le reseau
 partage - c'est la seule ligne a changer, de chaque cote.
 
@@ -155,17 +154,17 @@ l'accord de Brickset n'est pas obtenu.
 
 ## 4. Migrations
 
-Une image unique, `acervatim-migrate`, porte les dix dossiers `prisma/` et les joue en
+Une image unique, `acervatim-migrate`, porte les onze dossiers `prisma/` et les joue en
 sequence ([`migrate.sh`](migrate.sh)). Le monolithe utilisait une cible `--target migrate` dans
-son propre Dockerfile ; a dix services, cela ferait dix images de plus pour dix invocations
+son propre Dockerfile ; a onze services, cela ferait onze images de plus pour onze invocations
 d'un meme CLI - et surtout, cela ne garantirait plus l'**ordre**.
 
 Elle tourne en `initContainer` : **son echec empeche le pod de demarrer**, ce qui est
-infiniment preferable a dix services tournant sur un schema a moitie migre.
+infiniment preferable a onze services tournant sur un schema a moitie migre.
 
-`rebrickable-data` passe en dernier (`acv_rebrickable`, variable
-`DATABASE_URL_REBRICKABLE_DATA`). Comme les neuf autres, il utilise le compte SQL unique
-`acervatim` : la separation des comptes par service est reportee, l'isolation des schemas reste
+`rebrickable-data` (`acv_rebrickable`, variable `DATABASE_URL_REBRICKABLE_DATA`) puis
+`catalog-lego` (`acv_cat_lego`, variable `DATABASE_URL_CATALOG_LEGO`) passent en dernier. Comme
+les autres, ils utilisent le compte SQL unique `acervatim` : la separation des comptes par service est reportee, l'isolation des schemas reste
 une convention.
 
 Le script attend que MariaDB accepte les connexions avant de commencer (`DB_WAIT_SECONDS`,
@@ -224,7 +223,7 @@ Si le total au repos depasse nettement les `requests` cumules, ce sont les `limi
 revoir - pas la mesure.
 
 Aucune limite CPU n'est declaree : la memoire est la contrainte que l'architecture pointe, et
-brider le CPU de dix processus Node ne ferait qu'allonger un demarrage deja long.
+brider le CPU de onze processus Node ne ferait qu'allonger un demarrage deja long.
 
 ---
 
@@ -242,13 +241,15 @@ Tout est nomme distinctement pour que les deux stacks tournent en parallele pend
 
 Cote app, la bascule se resume a faire pointer le reverse proxy de 3000 vers 3100 : le contrat
 `/v1/*` est identique, c'est toute la contrainte du decoupage. **Cote donnees, non** : la
-constellation demarre sur dix schemas vides. Le proxy ne se bascule qu'apres la reprise des
+constellation demarre sur onze schemas vides. Le proxy ne se bascule qu'apres la reprise des
 donnees du monolithe, ecritures gelees, et avec les memes secrets -
 [`../db/reprise/README.md`](../db/reprise/README.md) donne la procedure et le retour arriere.
 
-La reprise ne concerne pas `acv_rebrickable` : le monolithe n'a aucune donnee LEGO (ni table,
-ni type de collection), et ce schema se remplit seul, par l'import des CSV Rebrickable au
-premier demarrage. `reprise.sh reset-targets` n'y touche pas non plus.
+La reprise ne concerne ni `acv_rebrickable` ni `acv_cat_lego` : le monolithe n'a aucune donnee
+LEGO (ni table, ni type de collection). Le premier se remplit seul, par l'import des CSV
+Rebrickable au premier demarrage ; le second demarre vide, et seules les collections creees
+apres la bascule y entrent. L'ancienne stack autonome de `catalog-lego` n'a jamais tourne en
+production : rien n'est a reprendre d'elle. `reprise.sh reset-targets` ne touche aucun des deux.
 
 ---
 
@@ -291,11 +292,15 @@ A dire clairement, parce que rien de ce qui suit n'a tourne :
 
 ---
 
-## 8. LEGO : ce qui est deploye, et ce qui reste a faire avant la bascule
+## 8. LEGO : deux services
 
-### 8.1 `rebrickable-data` est deploye
+La collection LEGO tient en deux services : `rebrickable-data`, le catalogue de reference
+partage par tous (sans donnee d'utilisateur), et `catalog-lego`, les collections des
+utilisateurs. La recherche d'un set passe par `search`, qui lit `rebrickable-data`.
 
-Le catalogue LEGO de reference (sets, themes, figurines, codes-barres) est le dixieme conteneur
+### 8.1 `rebrickable-data` : le catalogue de reference
+
+Le catalogue LEGO de reference (sets, themes, figurines, codes-barres) est un conteneur
 du pod : port 3190 **non publie**, schema `acv_rebrickable`, secret
 `DATABASE_URL_REBRICKABLE_DATA`, migre en dernier par `acervatim-migrate`, construit par
 `build-images.ps1`. Il n'a **aucune route au gateway** : seulement `/internal/*`
@@ -339,43 +344,21 @@ pas.
 
 **Reprise des donnees : non concerne** - voir le 6.
 
-**Pas encore de consommateur.** Aucun service du pod n'appelle ses routes `/internal/*`
-aujourd'hui : aucune variable d'adresse ne le designe dans le code des neuf autres, le gateway
-ne le route pas et ne le sonde pas. Il constitue et tient a jour la base de reference, et
-personne ne la lit tant que le catalog LEGO n'est pas la (8.2). D'ou l'absence de
-`REBRICKABLE_DATA_BASE_URL`
-dans le ConfigMap : elle s'ajoutera avec son premier consommateur.
+**Son consommateur : `search`**, par `REBRICKABLE_DATA_BASE_URL` (ConfigMap), pour
+`GET /v1/search?type=lego` (texte et code-barres) et pour le snapshot d'une source
+`rebrickable`. Le gateway ne le route pas et ne le sonde pas.
 
-### 8.2 `catalog-lego` n'est pas encore deploye
+### 8.2 `catalog-lego` : les collections LEGO
 
-**`catalog-lego` n'est pas dans le deploiement, et il doit y entrer avant la bascule**
-(decision du 2026-11-17). Aujourd'hui il n'a ni image, ni conteneur dans le pod, ni schema
-dans `db/init`, ni migration dans `acervatim-migrate`, ni entree dans le Secret, dans
-`SAGA_PARTICIPANTS` ou dans `build-images.ps1`. Ce n'est pas un oubli : en l'etat, il n'est
-pas deployable. Ce qui l'empeche :
+Refait le 2026-11-17 sur `catalog-core`, comme clone de `catalog-vinyl` : port 3220 **non
+publie**, schema `acv_cat_lego`, secret `DATABASE_URL_CATALOG_LEGO`, migre en dernier par
+`acervatim-migrate`, image construite par `build-images.ps1`. Le gateway le route par
+`CATALOG_LEGO_BASE_URL` (type de collection `lego`, ajoute a `identity` par une migration), et
+il figure dans `SAGA_PARTICIPANTS`.
 
-- **il n'a pas d'image de production** : seulement un `Dockerfile.dev`, celui de sa stack
-  autonome (3010/3307/6380), anterieure a la constellation ;
-- **il n'est pas relie au gateway** : aucune route `/v1/*` ne mene a lui, et le type de
-  collection `lego` n'existe ni dans `identity` ni dans le routage par type ;
-- **il est absent de la saga RGPD alors qu'il stocke des cles personnelles** : sa table
-  `source_credentials` garde, par `userId`, les cles API chiffrees deposees par les
-  utilisateurs. Il expose bien `DELETE /internal/users/:userId/data`, mais `SAGA_PARTICIPANTS`
-  ne le cite pas : deploye tel quel, une suppression de compte laisserait ces cles derriere
-  elle, et la saga se declarerait complete ;
-- **il doit etre refait, pas branche** : sur `catalog-core`, comme les trois autres catalogs,
-  apres une conception « collection LEGO » qui n'existe pas encore. Deployer le code actuel
-  pour le remplacer ensuite couterait une reprise de donnees de plus pour un code destine a
-  disparaitre.
+Il n'a **aucune cle** : ni Rebrickable, ni Brickset, ni cle personnelle d'utilisateur.
+L'ancienne stack autonome (index local rempli par l'API Rebrickable, moissonneurs, cles
+personnelles chiffrees) a ete supprimee ; elle n'avait jamais ete deployee.
 
-Ce que cela implique :
-
-- **la bascule attend ce service** : conception, reecriture sur `catalog-core`, puis entree
-  dans le pod. Un premier deploiement d'essai peut se faire a dix services ; le onzieme
-  s'ajoute avant la bascule ;
-- d'ici la, `rebrickable-data` tourne **sans consommateur** (8.1) : sa base se constitue,
-  personne ne la lit ;
-- le jour ou le nouveau catalog LEGO entre dans le pod, il apporte avec lui : son image et sa
-  ligne dans `build-images.ps1`, son conteneur et son schema (`db/init`, Secret,
-  `migrate.sh`, `Dockerfile.migrate`), ses routes au gateway, **sa ligne dans
-  `SAGA_PARTICIPANTS`**, et `REBRICKABLE_DATA_BASE_URL: http://localhost:3190` dans le ConfigMap.
+**Saga RGPD : participant.** Ses collections et ses items portent un `userId` ; la saga les
+exporte puis les purge par `DELETE /internal/users/:id/data`, comme pour les autres catalogs.

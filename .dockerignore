@@ -1,4 +1,4 @@
-# Contexte de build de la RACINE, utilise par les trois catalogs : leur Dockerfile a besoin
+# Contexte de build de la RACINE, utilise par les quatre catalogs : leur Dockerfile a besoin
 # de `catalog-core/` en plus de leur propre dossier, donc leur contexte est backend-services/.
 # Les sept autres services (dont `rebrickable-data`) se construisent depuis leur propre dossier, avec leur .dockerignore.
 
@@ -27,9 +27,6 @@ logs
 
 # Artefact regenere au bootstrap hors production.
 */openapi.json
-
-# Stack autonome, anterieure a la constellation : elle a ses propres images.
-catalog-lego
 
 # Les units de deploiement ne servent pas au build des images applicatives ; seul
 # deploy/Dockerfile.migrate a besoin des dossiers `prisma/`, deja inclus.

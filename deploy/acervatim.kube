@@ -1,24 +1,22 @@
 # Quadlet Podman de la constellation micro-services Acervatim.
 #
-# Les dix services applicatifs tournent dans **un seul pod**, decrit par `acervatim.yaml`.
+# Les onze services applicatifs tournent dans **un seul pod**, decrit par `acervatim.yaml`.
 # MariaDB et Redis sont a cote, en unites `.container` distinctes : ils ont un cycle de vie
 # propre et ne doivent pas redemarrer a chaque livraison de code (cf. acervatim-db.container).
-# `catalog-lego` n'en fait pas encore partie : il doit etre refait, puis entrer dans le pod
-# avant la bascule (deploy/README.md, 8).
 #
-# ### Pourquoi un pod unique plutot que dix
+# ### Pourquoi un pod unique plutot que onze
 #
-# Les dix conteneurs partagent alors une pile reseau : ils se joignent en `localhost:31xx`,
+# Les onze conteneurs partagent alors une pile reseau : ils se joignent en `localhost:31xx`,
 # sans DNS ni resolution de nom entre eux. Trois consequences, toutes voulues :
 #
-#   - **un seul port publie sur l'hote** (3100, le gateway). Les neuf autres services ne sont
+#   - **un seul port publie sur l'hote** (3100, le gateway). Les dix autres services ne sont
 #     joignables que depuis l'interieur du pod, ce qui applique par construction l'invariant du
 #     6 : « aucune route /internal/* n'est exposee vers l'exterieur » ;
-#   - **pas de DNS a faire fonctionner** entre dix conteneurs pour un deploiement mono-hote ;
+#   - **pas de DNS a faire fonctionner** entre onze conteneurs pour un deploiement mono-hote ;
 #   - **une seule unite a redemarrer**, donc pas d'etat intermediaire ou la moitie de la
 #     constellation tourne dans une version et l'autre moitie dans la precedente.
 #
-# Le prix : les dix services redemarrent ensemble. C'est acceptable ici parce qu'ils sont
+# Le prix : les onze services redemarrent ensemble. C'est acceptable ici parce qu'ils sont
 # livres ensemble ; ce ne le serait plus le jour ou l'un d'eux se deploie a son propre rythme -
 # il sortirait alors dans son propre pod, avec le reseau `acervatim-services` pour le joindre.
 #
@@ -73,7 +71,7 @@ Wants=network-online.target
 # Manifeste assemble (Secret + ConfigMap + Pod). Voir l'etape 3 ci-dessus.
 Yaml=%h/acervatim/acervatim.yaml
 # Reseau partage avec la base et Redis : c'est par lui que le pod resout `acervatim-db` et
-# `acervatim-services-redis`. Les dix services, eux, se parlent en `localhost`.
+# `acervatim-services-redis`. Les onze services, eux, se parlent en `localhost`.
 Network=acervatim-services.network
 # `--replace` implicite au demarrage : une relivraison remplace le pod au lieu d'echouer sur
 # un nom deja pris.
@@ -82,10 +80,10 @@ LogDriver=journald
 
 [Service]
 Restart=always
-# Genereux a dessein : les migrations des dix schemas tournent en initContainer, avant que
+# Genereux a dessein : les migrations des onze schemas tournent en initContainer, avant que
 # le moindre service ne demarre, et une premiere migration sur une base vide prend du temps.
 TimeoutStartSec=300
-# Laisse aux dix processus Node le temps de draîner leurs files BullMQ au SIGTERM.
+# Laisse aux onze processus Node le temps de draîner leurs files BullMQ au SIGTERM.
 TimeoutStopSec=90
 
 [Install]

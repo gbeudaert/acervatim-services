@@ -14,10 +14,11 @@ CREATE DATABASE IF NOT EXISTS acv_search      CHARACTER SET utf8mb4 COLLATE utf8
 CREATE DATABASE IF NOT EXISTS acv_cat_generic CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE DATABASE IF NOT EXISTS acv_cat_manga   CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE DATABASE IF NOT EXISTS acv_cat_vinyl   CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
+CREATE DATABASE IF NOT EXISTS acv_cat_lego    CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 CREATE DATABASE IF NOT EXISTS acv_rebrickable CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
 
 -- Permission large, en developpement COMME en production : le compte unique `acervatim` sert
--- les dix schemas (separation des comptes par service reportee le 2026-11-16, a revoir selon
+-- les onze schemas (separation des comptes par service reportee le 2026-11-16, a revoir selon
 -- la charge), et l'entrypoint MariaDB ne lui donne de droits que sur MARIADB_DATABASE.
 -- `prisma migrate dev` en a aussi besoin : il cree une shadow database, ce qui exige
 -- CREATE/DROP hors du schema du service (sinon P3014).

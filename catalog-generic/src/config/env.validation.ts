@@ -3,7 +3,7 @@ import { z } from 'zod';
 /**
  * Configuration du service catalog-generic.
  *
- * **Identique dans les trois catalogs**, au port pres : ils ne different que par les profils
+ * **Identique dans les quatre catalogs**, au port pres : ils ne different que par les profils
  * de type qu'ils servent, pas par ce dont ils ont besoin pour tourner.
  */
 export const EnvSchema = z.object({

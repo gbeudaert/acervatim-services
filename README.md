@@ -15,11 +15,12 @@ cursor et les codes de refus documentes dans `api-endpoints.md`.
 App Android ──HTTPS──> gateway  (/v1/*, JWT, routage, agregation OpenAPI, debit)
                           │
                           │  HTTP interne + principal signe X-Acervatim-Principal
-     ┌─────────────┬──────┴──────┬─────────────────┬──────────┬──────────┐
- catalog-manga  catalog-vinyl  catalog-generic  sharing    search   connections
+     ┌─────────────┬─────────────┬──────┴──────┬─────────────────┬──────────┬──────────┐
+ catalog-manga  catalog-vinyl  catalog-lego  catalog-generic  sharing    search   connections
      └───────────── identity (auth/users/RGPD/audit) ── billing (premium/subs/invit.)
 
- rebrickable-data (catalogue LEGO de reference) : hors gateway, /internal/* et /admin/* seulement
+ rebrickable-data (catalogue LEGO de reference) : hors gateway, /internal/* et /admin/* seulement,
+ lu par search pour la recherche LEGO
 ```
 
 | Service | Port | Schema | Perimetre |
@@ -33,9 +34,9 @@ App Android ──HTTPS──> gateway  (/v1/*, JWT, routage, agregation OpenAPI
 | [`catalog-generic`](catalog-generic/) | 3160 | `acv_cat_generic` | movie, book, game |
 | [`catalog-manga`](catalog-manga/) | 3170 | `acv_cat_manga` | manga |
 | [`catalog-vinyl`](catalog-vinyl/) | 3180 | `acv_cat_vinyl` | vinyle |
-| [`rebrickable-data`](rebrickable-data/) | 3190 | `acv_rebrickable` | Catalogue LEGO de reference (CSV Rebrickable, codes-barres Brickset au scan) - **interne**, non route par le gateway |
-| [`catalog-core`](catalog-core/) | - | - | **Bibliotheque** : le CRUD mutualise par les trois catalogs |
-| [`catalog-lego`](catalog-lego/) | 3010 | `acv_cat_lego` | LEGO - stack autonome, anterieure a la constellation. **Pas encore deploye** : a refaire avant la bascule |
+| [`rebrickable-data`](rebrickable-data/) | 3190 | `acv_rebrickable` | Catalogue LEGO de reference (CSV Rebrickable, codes-barres Brickset au scan) - **interne**, non route par le gateway, lu par `search` |
+| [`catalog-lego`](catalog-lego/) | 3220 | `acv_cat_lego` | LEGO (un item est une boite) |
+| [`catalog-core`](catalog-core/) | - | - | **Bibliotheque** : le CRUD mutualise par les quatre catalogs |
 | [`deploy`](deploy/) | - | - | **Deploiement** : Quadlet Podman, manifeste Kubernetes, images de production |
 
 **Une seule instance MariaDB, un schema logique par service, aucune FK inter-schemas.** C'est
@@ -43,20 +44,15 @@ la decision actee du 7, et elle est la source de presque tout le travail decrit 
 
 **Brickset, au scan seulement.** `rebrickable-data` n'appelle Brickset que pour un code scanne
 absent de son cache (decision du 2026-11-16) ; il n'y a plus de moissonnage.
-`BRICKSET_API_KEY` n'est renseignee **que** dans le `.env` de la constellation (pour
-`rebrickable-data`) et reste vide dans `catalog-lego/.env` : deux services sur la meme cle se
-partageraient le quota de 100 appels par jour. Voir `.env.example` et
+`BRICKSET_API_KEY` n'est lue **que** par `rebrickable-data` : `catalog-lego` n'appelle ni
+Rebrickable ni Brickset, et n'a aucune cle. Voir `.env.example` et
 [rebrickable-data](rebrickable-data/README.md#22-brickset-au-scan).
 
-**Perimetre du deploiement.** Dix services sont declares dans `deploy/` : tous ceux du tableau
-sauf `catalog-core` (une bibliotheque) et `catalog-lego`. `catalog-lego` n'est **pas deployable
-en l'etat** : pas d'image de production, pas de route au gateway, absent de la saga RGPD alors
-qu'il stocke des cles personnelles. Il doit etre refait sur `catalog-core`, apres une conception
-« collection LEGO » qui n'existe pas encore, et **entrer dans le deploiement avant la bascule**
-(decision du 2026-11-17). D'ici la, `rebrickable-data` est deploye mais aucun service ne le lit.
-En production, `BRICKSET_API_KEY` reste absente tant que l'accord de Brickset n'est pas obtenu.
-Detail et consequences :
-[`deploy/README.md`](deploy/README.md#8-lego--ce-qui-est-deploye-et-ce-qui-reste-a-faire-avant-la-bascule).
+**Perimetre du deploiement.** Onze services sont declares dans `deploy/` : tous ceux du tableau
+sauf `catalog-core` (une bibliotheque). `catalog-lego` a ete refait sur `catalog-core` le
+2026-11-17, comme clone de `catalog-vinyl`, pour etre en place a la bascule. En production,
+`BRICKSET_API_KEY` reste absente tant que l'accord de Brickset n'est pas obtenu. Detail :
+[`deploy/README.md`](deploy/README.md#8-lego--deux-services).
 
 ---
 
@@ -75,8 +71,7 @@ signe, peppers - doivent avoir la **meme valeur partout**, ce qu'un fichier uniq
 construction. `docker-compose.yml` surcharge par service ce qui doit differer (port, base, URLs
 des voisins).
 
-Ports decales (3100+, 3320, 6390) pour cohabiter avec le monolithe (3000/3306/6379) et avec la
-stack LEGO (3010/3307/6380).
+Ports decales (3100+, 3320, 6390) pour cohabiter avec le monolithe (3000/3306/6379).
 
 `./scripts/dev.ps1 help` liste le reste. `npm`, `npx`, `prisma` et `nest` ne se lancent
 **jamais** depuis Windows : un lancement hote produit des artefacts Prisma inutilisables dans
@@ -131,7 +126,7 @@ decoupage cosmetique.
 
 **`catalog-core` est l'exception**, et c'est un choix inverse : le CRUD collections / noeuds /
 items est trop gros et trop vivant pour etre triplique. Il est donc compile dans chacun des
-trois catalogs depuis une source unique - voir [son README](catalog-core/README.md), la
+quatre catalogs depuis une source unique - voir [son README](catalog-core/README.md), la
 mecanique n'est pas evidente.
 
 ---
@@ -183,7 +178,7 @@ Rebrickable, puis `unchanged` au second passage.
   C'est le point a risque juridique du chantier.
 - **Les tests du CRUD catalog n'ont pas ete portes** : ils s'appuyaient sur le `PrismaService`
   et les gardes du monolithe. Ils doivent revenir dans `catalog-core`, ou ils vaudront pour les
-  trois catalogs a la fois.
+  quatre catalogs a la fois.
 - **La reserve du TL;DR de l'architecture reste entiere.** Le domaine tient en ~13 000 LOC
   servies a un unique client Android ; dix processus Node/Nest representent de l'ordre de 1,1 a
   1,5 Go de RSS au repos. Le phasage etait concu pour etre **arretable a chaque palier** - ce

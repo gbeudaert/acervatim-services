@@ -222,6 +222,8 @@ function CATALOG_OR_UNDEFINED(code: string): ServiceName | undefined {
       return 'catalog-manga';
     case 'vinyl':
       return 'catalog-vinyl';
+    case 'lego':
+      return 'catalog-lego';
     case 'movie':
     case 'book':
     case 'game':

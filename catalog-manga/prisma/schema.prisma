@@ -2,7 +2,7 @@
 // partagee : AUCUNE relation ne franchit la frontiere du service (cf.
 // ../../../acervatim-docs/agent/backend/architecture-microservices.md, invariant central).
 //
-// **Ce fichier est identique dans les trois catalogs**, au nom de la base pres. C'est le
+// **Ce fichier est identique dans les quatre catalogs**, au nom de la base pres. C'est le
 // pendant de `catalog-core` cote donnees : les trois types partagent le meme modele, seul le
 // profil applicatif differe. Le garder identique est ce qui permet a `catalog-core` d'etre
 // compile contre les trois clients Prisma generes.
@@ -29,7 +29,7 @@ model Collection {
   id          String   @id @default(uuid()) @db.Char(36)
   /// Colonne nue, sans FK.
   userId      String   @map("user_id") @db.Char(36)
-  /// `vinyl` | `manga` | `movie` | `book` | `game`.
+  /// `vinyl` | `manga` | `movie` | `book` | `game` | `lego`.
   typeCode    String   @map("type_code") @db.VarChar(32)
   name        String   @db.VarChar(255)
   description String?  @db.Text
@@ -50,14 +50,14 @@ model Collection {
   @@map("collections")
 }
 
-/// Un item : un tome (manga), un disque (vinyle), un film...
+/// Un item : un tome (manga), un disque (vinyle), une boite (LEGO), un film...
 model Item {
   id           String   @id @default(uuid()) @db.Char(36)
   collectionId String   @map("collection_id") @db.Char(36)
   /// Denormalise pour les requetes par utilisateur (plafonds, export RGPD, recherche
   /// `items[in]`). Colonne nue, sans FK.
   userId       String   @map("user_id") @db.Char(36)
-  /// Serie (manga) ; `null` pour un type plat (vinyle) ou un tome detache.
+  /// Serie (manga) ; `null` pour un type plat (vinyle, LEGO) ou un tome detache.
   nodeId       String?  @map("node_id") @db.Char(36)
   /// Numero de tome ; `null` pour un hors-serie ou un type plat.
   volume       Int?

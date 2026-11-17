@@ -31,7 +31,7 @@ if ($null -eq $Rest) { $Rest = @() }
 # du registre de routage du gateway au boot). `rebrickable-data` ne depend de personne.
 $AllServices = @(
     'gateway', 'identity', 'billing', 'connections', 'sharing', 'search',
-    'rebrickable-data', 'catalog-generic', 'catalog-manga', 'catalog-vinyl'
+    'rebrickable-data', 'catalog-generic', 'catalog-manga', 'catalog-vinyl', 'catalog-lego'
 )
 
 # Port publie de rebrickable-data : ses routes /admin/* ne passent pas par le gateway.
@@ -80,7 +80,8 @@ Catalogue LEGO (rebrickable-data, jeton ADMIN_API_TOKEN lu dans .env) :
 Services : $($AllServices -join ', ')
 Ports    : gateway 3100, identity 3110, billing 3120, connections 3130,
            sharing 3140, search 3150, catalog-generic 3160, catalog-manga 3170,
-           catalog-vinyl 3180, rebrickable-data 3190 - MariaDB 3320, Redis 6390.
+           catalog-vinyl 3180, rebrickable-data 3190, catalog-lego 3220 -
+           MariaDB 3320, Redis 6390.
 "@ | Write-Host
 }
 
@@ -121,7 +122,7 @@ function Invoke-EachOrOne {
 # une jonction reproduit la meme disposition pour que l'editeur resolve les memes chemins.
 function Invoke-LinkCore {
     $base = (Get-Location).Path
-    foreach ($svc in @('catalog-generic', 'catalog-manga', 'catalog-vinyl')) {
+    foreach ($svc in @('catalog-generic', 'catalog-manga', 'catalog-vinyl', 'catalog-lego')) {
         $link = Join-Path $base "$svc\catalog-core"
         if (Test-Path $link) {
             Write-Host "$svc : jonction deja en place"
@@ -137,6 +138,7 @@ function Invoke-Health {
         'gateway' = 3100; 'identity' = 3110; 'billing' = 3120; 'connections' = 3130
         'sharing' = 3140; 'search' = 3150; 'catalog-generic' = 3160
         'catalog-manga' = 3170; 'catalog-vinyl' = 3180; 'rebrickable-data' = 3190
+        'catalog-lego' = 3220
     }
     foreach ($svc in $AllServices) {
         $uri = "http://localhost:$($ports[$svc])/health/ready"

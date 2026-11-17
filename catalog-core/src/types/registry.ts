@@ -10,8 +10,8 @@ import { makeFallbackProfile } from './fallback';
  * architecture-microservices.md) : chaque catalog n'enregistre plus que **ses** profils, et
  * le gateway route sur le `typeCode`.
  *
- * `catalog-generic` en declare trois (movie, book, game), `catalog-manga` et `catalog-vinyl`
- * un seul chacun.
+ * `catalog-generic` en declare trois (movie, book, game), `catalog-manga`, `catalog-vinyl` et
+ * `catalog-lego` un seul chacun.
  */
 export const COLLECTION_TYPE_PROFILES = Symbol('COLLECTION_TYPE_PROFILES');
 
