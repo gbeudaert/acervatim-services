@@ -89,7 +89,11 @@ export class HttpClientService implements OnModuleInit {
           this.logger.warn(
             `http: upstream unavailable after ${maxAttempts} attempt(s) ${redactedTarget(url)} status=${retryable.status ?? 'network'}`,
           );
-          throw new BadGatewayException('upstream unavailable');
+          // `cause` garde le statut et le Retry-After : un 429 et un 503 donnent le même 502 à
+          // l'appelant HTTP, mais un worker doit pouvoir mettre sa file en pause sur le premier.
+          throw new BadGatewayException('upstream unavailable', {
+            cause: retryable,
+          });
         }
         const delay = retryable.retryAfterMs ?? backoff(attempt);
         this.logger.log(
