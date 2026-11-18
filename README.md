@@ -176,10 +176,11 @@ Rebrickable, puis `unchanged` au second passage.
 - **La saga RGPD n'a pas ete eprouvee en panne reelle.** Le 3.4 est clair : tant que le rejeu
   et l'alerte n'ont pas ete observes sur un participant eteint, ce jalon n'est pas termine.
   C'est le point a risque juridique du chantier.
-- **Les tests du CRUD catalog sont portes, mais n'ont tourne qu'en developpement** : unitaires
-  dans chaque catalog, et suite d'integration contre une vraie base
-  (`./scripts/dev.ps1 test-int <catalog>`, base `<schema>_it`). Detail et correspondance avec
-  les tests du monolithe : [`catalog-core`](catalog-core/README.md#6-tests).
+- **Les tests du CRUD catalog et de sharing sont portes, mais n'ont tourne qu'en
+  developpement** : unitaires, et suites d'integration contre une vraie base
+  (`./scripts/dev.ps1 test-int <catalog>` ou `test-int sharing`, base `<schema>_it`). Detail et
+  correspondance avec les tests du monolithe : [`catalog-core`](catalog-core/README.md#6-tests),
+  [`sharing`](sharing/README.md#7-tests).
 - **La reserve du TL;DR de l'architecture reste entiere.** Le domaine tient en ~13 000 LOC
   servies a un unique client Android ; dix processus Node/Nest representent de l'ordre de 1,1 a
   1,5 Go de RSS au repos. Le phasage etait concu pour etre **arretable a chaque palier** - ce

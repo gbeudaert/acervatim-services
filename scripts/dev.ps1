@@ -70,7 +70,7 @@ Qualite :
   lint <svc>           eslint --fix
   format <svc>         prettier --write
   test <svc> [args]    jest
-  test-int <catalog>   Suite d'integration de catalog-core, base <schema>_it
+  test-int <svc>       Suite d'integration (un catalog ou sharing), base <schema>_it
   build-ts [svc]       nest build - verification de compilation (toutes si omis)
 
 Catalogue LEGO (rebrickable-data, jeton ADMIN_API_TOKEN lu dans .env) :
@@ -249,9 +249,10 @@ switch ($Command) {
     'format' { Invoke-InService $Service @('npm', 'run', 'format') }
     'test' { Invoke-InService $Service (@('npm', 'run', 'test', '--') + $Rest) }
     'test-int' {
-        # La suite vit dans catalog-core mais tourne dans un catalog : elle y est compilee contre
-        # son client Prisma, et sa base est celle du catalog suffixee _it (recreee a chaque fois).
-        if ($Service -notlike 'catalog-*') { throw 'test-int attend un catalog : catalog-generic, catalog-manga, catalog-vinyl ou catalog-lego' }
+        # Celle des catalogs vit dans catalog-core mais tourne dans un catalog : elle y est
+        # compilee contre son client Prisma. Celle de sharing vit dans sharing/test. Dans les deux
+        # cas, la base est celle du service suffixee _it, recreee a chaque fois.
+        if ($Service -notlike 'catalog-*' -and $Service -ne 'sharing') { throw 'test-int attend un catalog (catalog-generic, catalog-manga, catalog-vinyl, catalog-lego) ou sharing' }
         Invoke-InService $Service (@('npm', 'run', 'test:int', '--') + $Rest)
     }
     'build-ts' { Invoke-EachOrOne $Service @('npm', 'run', 'build') }

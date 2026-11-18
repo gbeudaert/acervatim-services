@@ -40,6 +40,9 @@ MariaDB). Schema `acv_sharing`, port 3140. Cible :
 
 - Tout passe par le wrapper de la racine : `../scripts/dev.ps1 up-bg`,
   `../scripts/dev.ps1 logs sharing`, `../scripts/dev.ps1 test sharing`.
+- Suite d'integration (`test/*.int-spec.ts`), contre la base `acv_sharing_it` recreee a chaque
+  execution : `../scripts/dev.ps1 test-int sharing`. Une modification d'un partage, du redeem
+  ou de la resolution d'acces se verifie par cette suite. Detail : README, 7.
 - `npm`, `npx`, `node`, `prisma`, `nest` ne se lancent **jamais** depuis Windows : passer par
   `../scripts/dev.ps1 <cmd> sharing`.
 - Un catalog eteint ne casse pas le service : les collections de ce type deviennent

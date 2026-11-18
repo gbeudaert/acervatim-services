@@ -124,7 +124,37 @@ code deja distribue, ce que le proprietaire n'a pas demande.
 
 ---
 
-## 7. Reste a faire
+## 7. Tests
+
+**Unitaires** (`src/**/*.spec.ts`, `./scripts/dev.ps1 test sharing`) : ensembles de statuts,
+decodage du principal signe, chiffrement, demarrage sans pepper valide.
+
+**Integration** (`test/*.int-spec.ts`), contre une vraie base MariaDB :
+`./scripts/dev.ps1 test-int sharing`. La base est `acv_sharing_it`, recreee et migree a chaque
+execution ; son nom est verifie avant tout nettoyage. Le harnais (`test/harness.ts`) monte
+`AppModule` tel que `main.ts` le monte, avec un vrai principal signe par un secret de test, et
+ne simule que les voisins : le client interne est remplace par un faux qui joue les catalogs
+(proprietaire d'une collection, comptes par statut) et le journal d'audit. La table type ->
+catalog, la diffusion de `findCollection` et le regroupement des comptes par catalog sont donc
+exerces.
+
+| Fichier | Equivalent dans le monolithe |
+|---|---|
+| `test/shares.int-spec.ts` | `sharing/sharing.e2e.spec.ts`, et `sharing/sharing.service.spec.ts` sauf le demarrage |
+| `test/internal.int-spec.ts` | partie acces de `sharing/shared-read.e2e.spec.ts` (fin d'acces, etancheite), export RGPD de `sharing.e2e.spec.ts` ; resolution d'acces et suppression RGPD (nouvelles) |
+| `src/sharing/sharing.service.spec.ts` | `sharing/sharing.service.spec.ts`, demarrage |
+| `src/sharing/share-statuses.spec.ts` | `sharing/share-filter.service.spec.ts`, ensembles de statuts |
+
+Ce qui a quitte sharing se teste ailleurs : le gate premium de `POST /v1/shares` et la
+limitation du redeem au gateway (`principal/principal.service.spec.ts`, table de routage) ; ce
+qu'un membre lit d'une collection partagee au catalog (`catalog-core/test/shared-read.int-spec.ts`).
+
+La garde de la derniere place (`updateMany` conditionnel du redeem) est verifiee par des redeems
+simultanes : sans elle, le test laisse entrer tout le monde.
+
+---
+
+## 8. Reste a faire
 
 - **Mesurer le cout de la creation de partage.** Elle diffuse aux catalogs configures pour
   trouver chaque collection - la seule diffusion de la constellation. Acceptable parce que

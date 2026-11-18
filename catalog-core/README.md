@@ -157,8 +157,9 @@ filtres `items[in]`/`items[all]`, `provider[in]`, statuts de partage, comptages.
 | `src/limits.service.spec.ts` | `common/limits/limits.service.spec.ts` |
 
 Ce qui a quitte les catalogs se teste ailleurs : le gate premium, la resolution d'acces et le
-refus d'un identifiant malforme dans le gateway (`principal/principal.service.spec.ts`), les
-ensembles de statuts dans `sharing` (`share-statuses.spec.ts`), le decodage du principal signe
+refus d'un identifiant malforme dans le gateway (`principal/principal.service.spec.ts`), la
+resolution d'acces, les partages et les ensembles de statuts dans `sharing` (sa suite
+d'integration, `test-int sharing`, et `share-statuses.spec.ts`), le decodage du principal signe
 dans chaque service (`principal.codec.spec.ts`).
 
 Deux comportements a connaitre, fixes par les tests :
