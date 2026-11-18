@@ -77,10 +77,10 @@ describe('collections (integration)', () => {
   });
 
   // Isolation en lecture : dans la constellation, c'est le gateway qui refuse un tiers (404),
-  // apres avoir demande a `sharing` ; le catalog lit le role que porte le principal signe et
-  // ne redecide pas (collection-access.guard.ts). Les ecritures, elles, restent scopees sur
-  // l'utilisateur ici meme : voir PATCH et DELETE plus bas.
-  it('lit sa collection ; une collection inexistante est un 404', async () => {
+  // apres avoir demande a `sharing`. Le catalog le refuse aussi, en defense en profondeur : un
+  // principal sans role `shared` doit etre le proprietaire (collection-access.guard.ts). Les
+  // ecritures restent en plus scopees sur l'utilisateur : voir PATCH et DELETE plus bas.
+  it('lit sa collection ; une collection inexistante ou d un autre compte est un 404', async () => {
     const id = await create(USER_A, 'vinyl', 'a moi');
     const own = await h.as(USER_A).get(`/v1/collections/${id}`).expect(200);
     expect(own.body).toMatchObject({ id, type: 'vinyl', hierarchy: [] });
@@ -88,6 +88,10 @@ describe('collections (integration)', () => {
       .as(USER_A)
       .get('/v1/collections/11111111-1111-4111-8111-111111111111')
       .expect(404);
+    await h.as(USER_B).get(`/v1/collections/${id}`).expect(404);
+    // Meme reponse avec un role `owner` signe pour un autre compte : le role ne remplace pas
+    // la propriete.
+    await h.as({ userId: USER_B, role: 'owner' }).get(`/v1/collections/${id}`).expect(404);
   });
 
   it('liste ses collections seulement, filtre type[in]', async () => {

@@ -37,13 +37,25 @@ export const CollectionRef = (via: CollectionRefVia, param: string) =>
  * gateway (3.1 et 3.6) : quand la requete arrive ici, la decision est **deja prise** et
  * signee. Il ne reste qu'a lire.
  *
- * Ce garde ne peut donc plus refuser pour une raison d'autorisation - `404` mis a part, quand
- * la ressource n'existe pas dans ce catalog. C'est voulu : deux endroits qui decident du meme
- * acces finissent toujours par ne plus dire la meme chose.
+ * Ce garde ne redecide donc pas l'acces : il ne consulte pas les partages et ne refait pas le
+ * calcul des statuts. C'est voulu : deux endroits qui decident du meme acces finissent
+ * toujours par ne plus dire la meme chose.
  *
- * Le `404` restant n'est pas redondant avec le registre du gateway : une ressource peut avoir
- * disparu entre la resolution du registre et l'arrivee ici, et le registre peut diverger. La
- * verite est dans ces tables.
+ * ### Ce qu'il refuse encore, en `404`
+ *
+ * - **La ressource n'existe pas dans ce catalog.** Ce n'est pas redondant avec le registre du
+ *   gateway : une ressource peut avoir disparu entre la resolution du registre et l'arrivee
+ *   ici, et le registre peut diverger. La verite est dans ces tables.
+ * - **Un principal qui n'est pas marque `shared` et n'est pas le proprietaire.** C'est une
+ *   defense en profondeur, decidee le 2026-11-18 : le gateway a deja refuse ce tiers, apres
+ *   `sharing`, et ce test ne change rien a un usage normal. Il ne tranche aucune question de
+ *   partage - il verifie seulement que le principal dit vrai sur ce que ces tables savent
+ *   sans `sharing` : qui possede la collection. Sans lui, un principal signe sans role (une
+ *   route du gateway mal declaree, par exemple) ouvrirait la collection de n'importe qui en
+ *   lecture.
+ *
+ * Le refus est un `404`, jamais un `403`, comme au gateway : un tiers ne doit pas pouvoir
+ * distinguer une collection qui existe d'une collection qui n'existe pas.
  */
 @Injectable()
 export class CollectionAccessGuard implements CanActivate {
@@ -77,6 +89,9 @@ export class CollectionAccessGuard implements CanActivate {
     const rawId = req.params[meta.param];
     const collection = await this.resolveCollection(meta.via, rawId);
     if (!collection) {
+      throw new NotFoundException('Resource not found');
+    }
+    if (principal.role !== 'shared' && principal.userId !== collection.userId) {
       throw new NotFoundException('Resource not found');
     }
 

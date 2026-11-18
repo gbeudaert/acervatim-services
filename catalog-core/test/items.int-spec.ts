@@ -1,3 +1,4 @@
+import type { Response } from 'supertest';
 import {
   createHarness,
   Harness,
@@ -604,6 +605,28 @@ describe('items et noeuds (integration)', () => {
       .expect(404);
     expect(await h.db.item.count()).toBe(1);
     expect(await h.db.collectionNode.count()).toBe(1);
+  });
+
+  it('lectures d un autre compte sans partage : 404 partout, comme une ressource inexistante', async () => {
+    const coll = await collection(USER_A, 'manga', 'A mangas');
+    const tome = await h
+      .as(USER_A)
+      .post(`/v1/collections/${coll}/items`)
+      .send({ node: { provider: 'mal', externalId: '99' }, volume: 1, unifiedData: {} })
+      .expect(201);
+    const b = h.as(USER_B);
+    for (const url of [
+      `/v1/collections/${coll}`,
+      `/v1/collections/${coll}/items`,
+      `/v1/collections/${coll}/nodes`,
+      `/v1/items/${tome.body.id}`,
+      `/v1/items/${tome.body.id}/sources`,
+      `/v1/nodes/${tome.body.nodeId}`,
+      `/v1/nodes/${tome.body.nodeId}/sources`,
+    ]) {
+      const res: Response = await b.get(url);
+      expect({ url, status: res.status }).toEqual({ url, status: 404 });
+    }
   });
 
   it('type sans profil (movie) : POST permissif', async () => {

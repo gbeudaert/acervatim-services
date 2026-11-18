@@ -163,9 +163,11 @@ dans chaque service (`principal.codec.spec.ts`).
 
 Deux comportements a connaitre, fixes par les tests :
 
-- **Le catalog ne redecide pas l'acces en lecture.** Il lit le role du principal signe ; un
-  tiers est refuse (404) par le gateway, apres `sharing`. Les ecritures, elles, restent scopees
-  sur l'utilisateur ici meme (404).
+- **Le catalog ne redecide pas le partage, mais il verifie la propriete.** Il lit le role et
+  les statuts du principal signe sans consulter `sharing`. Un principal qui n'est pas marque
+  `shared` doit en revanche etre le proprietaire de la collection visee, sinon `404` : c'est
+  une defense en profondeur (decision du 2026-11-18), le gateway ayant deja refuse ce tiers.
+  Les ecritures restent en plus scopees sur l'utilisateur dans les services (404).
 - **Un identifiant malforme rend 404 au catalog seul**, parce que le garde d'acces cherche la
   ressource avant la validation du parametre. Le gateway rend 400 en amont, comme le monolithe.
 
