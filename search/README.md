@@ -178,7 +178,35 @@ famille de cles.
 
 ---
 
-## 9. Reste a faire
+## 9. Banc d'essai du scan manga
+
+`scripts/scan-resolve.ts` resout un lot d'ISBN **comme l'app** : le scan, puis l'import de la
+serie avec le titre, l'edition, l'editeur et le mangaId qu'il rend, puis la liste des tomes
+relue en cache seul. Il tourne dans le conteneur, sans HTTP ni identite, et ecrit un rapport
+JSON par ISBN (chemin d'identification, serie, tomes, jaquettes et leur source).
+
+```powershell
+./scripts/dev.ps1 scan-resolve                     # test/fixtures/scanned-isbns.txt
+./scripts/dev.ps1 scan-resolve test/fixtures/scanned-isbns.txt --compare test/fixtures/<ref>.result.json
+```
+
+`--compare` confronte le passage a un rapport de reference : celui du `scan-resolve` du
+monolithe (meme format, a copier dans `test/fixtures/`) ou un passage precedent de ce script.
+Une ligne par ISBN, `idem`, `ECART` ou `NOUVEAU`, sur le chemin, le titre de serie, l'edition, le
+nombre de tomes et de jaquettes.
+
+A savoir avant de lire un ecart :
+
+- **Le premium n'est pas simule.** Il se resout dans `connections` et `billing`, et le worker de
+  la file `mal` (partagee avec le service qui tourne) relit le jeton de l'utilisateur. Le banc
+  scanne donc en utilisateur gratuit : un ISBN que MangaDex n'identifie pas finit en `bnf_only`
+  la ou le monolithe, qui creait des utilisateurs premium, passait par MAL.
+- **Les rapports ne sont pas suivis par git** (`test/fixtures/*.result.json`) : ils contiennent
+  des titres et des jaquettes de sources tierces.
+
+---
+
+## 10. Reste a faire
 
 - **Mesurer le surcout de la resolution de jeton.** Elle etait en memoire, elle est devenue un
   appel reseau **par requete de recherche** - le seul de ce service sur le chemin chaud. Un

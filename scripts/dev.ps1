@@ -72,6 +72,10 @@ Qualite :
   test <svc> [args]    jest
   test-int <svc>       Suite d'integration (un catalog ou sharing), base <schema>_it
   build-ts [svc]       nest build - verification de compilation (toutes si omis)
+  scan-resolve [fichier] [--compare ref.json] [--out r.json]
+                       Banc du scan manga dans search : chaque ISBN scanne, serie importee,
+                       liste des tomes relue, comme l'app ; --compare confronte a un rapport
+                       (monolithe ou passage precedent). Defaut : test/fixtures/scanned-isbns.txt
 
 Catalogue LEGO (rebrickable-data, jeton ADMIN_API_TOKEN lu dans .env) :
   lego-status          Comptes, budget Brickset du jour, 10 derniers runs
@@ -256,6 +260,12 @@ switch ($Command) {
         Invoke-InService $Service (@('npm', 'run', 'test:int', '--') + $Rest)
     }
     'build-ts' { Invoke-EachOrOne $Service @('npm', 'run', 'build') }
+    'scan-resolve' {
+        # Ici `$Service` est le premier argument du script (fichier d'ISBN ou option), pas un service.
+        $scanArgs = @()
+        if (-not [string]::IsNullOrWhiteSpace($Service)) { $scanArgs += $Service }
+        Invoke-InService 'search' (@('npx', 'ts-node', '--transpile-only', 'scripts/scan-resolve.ts') + $scanArgs + $Rest)
+    }
     'lego-status' { Invoke-LegoAdmin 'GET' 'admin/status' }
     'lego-import' {
         $extra = -not [string]::IsNullOrWhiteSpace($Service) -and $Service -ne 'force'

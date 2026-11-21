@@ -55,6 +55,8 @@ Recherche externe, pivot manga, files BullMQ et cache d'API (NestJS, Prisma, Mar
   plus le taux de hit du cache par famille de cles - c'est l'outil de calibrage des limiters.
 - **`docker compose restart` ne relit pas `.env`.** Apres modification, utiliser
   `docker compose up -d --force-recreate search`.
+- Toute modification du scan manga (BnF, pivot, enumeration) se verifie aussi sur de vrais ISBN :
+  `../scripts/dev.ps1 scan-resolve [fichier] [--compare <ref.json>]` (README, section 9).
 
 ## Conventions that differ from defaults
 
@@ -86,4 +88,8 @@ Recherche externe, pivot manga, files BullMQ et cache d'API (NestJS, Prisma, Mar
   service sur le chemin chaud ; le mesurer avant d'ajouter quoi que ce soit d'autre.
 - **Titre de serie d'une pre-notice BnF** : sans 461, 225$a est la collection de l'editeur, pas
   la serie. Ne pas revenir a « 461$t, sinon 225$a, sinon 200$a » (cf. `scanSeriesTitle`).
+- **Le mode watch ne voit pas les fichiers modifies depuis Windows** (montage du conteneur) :
+  `dist/` reste a l'ancien code. Redemarrer le service (`../scripts/dev.ps1 restart search`).
+- **`scripts` doit rester exclu de `tsconfig.build.json`.** Sinon la racine de compilation
+  remonte d'un cran, `dist/main.js` devient `dist/src/main.js` et le service ne demarre plus.
 - PowerShell 5.1 : ni `&&` ni `||` (utiliser `; if ($?) { ... }`). Sources `.ps1` en ASCII pur.

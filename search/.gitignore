@@ -39,3 +39,7 @@ openapi.json
 # BMad Method - installation partagee, branchee par jonctions
 /_bmad/
 /_bmad-output/
+
+# Sortie de scripts/scan-resolve.ts (et rapports de reference copies pour --compare) : generee
+# localement, contient des jaquettes et des titres de sources tierces.
+test/fixtures/*.result.json
