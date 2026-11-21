@@ -38,23 +38,46 @@ production tourne sur le monolithe 0.9.0. La bascule complete a ete decidee le 2
 
 ### Exploitation
 
-- **Deploiement** : un pod Podman (`deploy/acervatim.kube`, `deploy/acervatim.yaml`), MariaDB
-  et Redis hors du pod, migrations des onze schemas en initContainer (image
-  `acervatim-migrate`). Procedure : `deploy/README.md`, section 3.
+- **Deploiement par archive** : `deploy/build-archive.ps1` construit sur le poste de build une
+  archive par architecture (les douze images, Redis et un client MariaDB) ; `deploy/deploiement.sh`
+  la deroule sur l'hote en douze etapes notees, avec reprise apres interruption, une pause pour la
+  bascule du reverse proxy, et les sous-commandes `statut`, `retour` et `desinstaller`.
+  Procedure : `deploy/README.md`, section 3. Tests : `deploy/tests/fumee.sh` (sans donnees) et
+  `deploy/tests/relecture.js` (donnees reprises, lues au nom de chaque utilisateur).
+- **Pod Podman** (`deploy/acervatim.kube`, `deploy/acervatim.yaml`) : migrations des onze schemas
+  en initContainer (image `acervatim-migrate`), Redis hors du pod.
+- **Base sur l'instance MariaDB du monolithe** (decision du 2026-11-21) : onze schemas `acv_*` a
+  cote de `acervatim`, avec le compte du monolithe ; `acervatim-db.container` ne sert plus qu'en
+  local. `reprise.sh` joint une instance distante par un client en conteneur (`TARGET_DB_HOST`,
+  `SOURCE_DB_HOST`).
 - **Images** : a construire sur l'architecture de l'hote. Prisma embarque le moteur de
   l'architecture du build, et une image construite ailleurs echoue au premier acces a la base.
+  L'archive controle chaque image : node et moteurs Prisma de l'architecture visee, scripts
+  shell en LF (`.gitattributes` l'impose ; construite depuis un arbre de travail Windows, l'image
+  de migration gardait `migrate.sh` en CRLF et l'initContainer ne demarrait pas).
 - **Cohabitation** avec le monolithe : reseau `acervatim-services`, Redis
   `acervatim-services-redis`, port 3100. Les deux stacks tournent ensemble pendant la bascule.
-- **Secrets** (gabarit `deploy/acervatim-secrets.example.yaml`) : une `DATABASE_URL_*` par
-  service, `INTERNAL_PRINCIPAL_SECRET` et `INTERNAL_SERVICE_TOKEN` (appels entre services),
-  `GAMEUPC_API_KEY` et `GAMEUPC_VOTER_PEPPER`, `BGG_API_TOKEN` vide. `BRICKSET_API_KEY` est
-  absente a dessein tant que l'accord de Brickset est pending.
+- **Secrets** : repris par `deploiement.sh` de l'environnement du conteneur du monolithe en
+  service, compte SQL compris ; seuls `INTERNAL_PRINCIPAL_SECRET`, `INTERNAL_SERVICE_TOKEN` et
+  `GAMEUPC_VOTER_PEPPER` sont generes, et `GAMEUPC_API_KEY` est saisie. Une cle absente du
+  monolithe reste hors du Secret : une valeur vide echoue a la validation (`billing` sur
+  `GOOGLE_PLAY_*`). Gabarit : `deploy/acervatim-secrets.example.yaml`. `BGG_API_TOKEN` vide,
+  `BRICKSET_API_KEY` absente a dessein tant que l'accord de Brickset est pending.
 - **Reprise des donnees** : la constellation demarre sur des schemas vides. Le proxy ne
   bascule qu'apres la reprise, ecritures gelees, avec **les memes secrets** que le monolithe
-  (`SUB_HASH_PEPPER`, `ENCRYPTION_KEY`, JWT) : `db/reprise/README.md`.
+  (`SUB_HASH_PEPPER`, `ENCRYPTION_KEY`, JWT) : etapes 8 a 10 de `deploiement.sh`,
+  `db/reprise/README.md`.
+
+### Verifie
+
+- Repetition complete le 2026-11-21 sous Podman rootless, dans une distribution WSL dediee, en
+  amd64 : monolithe 0.9.0 en service sur une instance MariaDB distincte, etapes 0 a 11, puis
+  `retour` et `desinstaller` (base du monolithe identique a la somme de controle pres). Premier
+  `podman kube play` du manifeste : initContainer, `hostPort`, `envFrom` et Secret fonctionnent.
+- Les douze images se construisent sous Docker en amd64.
 
 ### Non verifie
 
-- Aucun `podman kube play` n'a ete lance, et aucune image n'a ete construite sous Podman ni
-  sur l'architecture de l'hote. Les douze images se construisent sous Docker en amd64.
-- Les migrations n'ont tourne que contre des bases de developpement ou jetables.
+- Rien n'a tourne sur l'hote : l'arm64, l'instance MariaDB et le reverse proxy reels restent a
+  eprouver. Les etapes 0 a 7 le font sans toucher au monolithe.
+- La reprise n'a tourne que sur le vidage de developpement, jamais sur les donnees de production.
