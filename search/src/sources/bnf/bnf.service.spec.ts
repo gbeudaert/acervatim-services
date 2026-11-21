@@ -1,4 +1,5 @@
 import {
+  aliceRecords,
   sakamotoRecords,
   snkRecords,
   sruResponse,
@@ -399,6 +400,8 @@ describe('BnfService', () => {
       12 * 3600,
     );
     expect(mapping.tomes.map((t) => t.editionVolume)).toEqual([22]);
+    // Un seul libellé dans le sous-ensemble : pas d'énumération complète à relire.
+    expect(queue.add).toHaveBeenCalledTimes(1);
   });
 
   it("rattrapage sans éditeur : l'éditeur dominant se calcule sur l'énumération complète", async () => {
@@ -553,11 +556,113 @@ describe('BnfService', () => {
       'dt-25',
     );
 
-    // Éditeur explicite : filtre strict, pas de comblement.
-    const strict = await svc.enumerateEdition('Saint Seiya', null, {
+    // Éditeur explicite : Delcourt-Tonkam lui succède (aucun n° commun) et le rejoint ; les 2-en-1
+    // France Loisirs reprennent des n° Tonkam, ils restent un autre catalogue.
+    const explicit = await svc.enumerateEdition('Saint Seiya', null, {
       publisher: 'Tonkam',
     });
-    expect(strict.tomes).toHaveLength(20);
+    expect(explicit.publisher).toBe('Tonkam');
+    expect(explicit.tomes).toHaveLength(30);
+    expect(explicit.tomes.some((t) => t.isbn?.startsWith('fl-'))).toBe(false);
+
+    const bookClub = await svc.enumerateEdition('Saint Seiya', null, {
+      publisher: 'Éditions France loisirs',
+    });
+    expect(bookClub.tomes.map((t) => t.isbn)).toEqual(['fl-11-12', 'fl-17-18']);
+  });
+
+  describe('libellés successifs (Alice in Borderland : Delcourt-Akata, Delcourt, Éditions Delcourt)', () => {
+    const volumes = Array.from({ length: 18 }, (_, i) => i + 1);
+
+    it.each(['Delcourt-Akata', 'Delcourt', 'Éditions Delcourt'])(
+      'éditeur explicite « %s » : les 18 tomes, sans Alice in Borderland retry',
+      async (publisher) => {
+        const { svc } = makeService(sruResponse(aliceRecords()));
+        const mapping = await svc.enumerateEdition(
+          'Alice in Borderland',
+          null,
+          {
+            publisher,
+          },
+        );
+        expect(mapping.tomes.map((t) => t.editionVolume)).toEqual(volumes);
+        expect(mapping.tomes.some((t) => t.isbn?.startsWith('978-retry'))).toBe(
+          false,
+        );
+      },
+    );
+
+    it('le libellé rendu reste celui demandé', async () => {
+      const { svc } = makeService(sruResponse(aliceRecords()));
+      const mapping = await svc.enumerateEdition('Alice in Borderland', null, {
+        publisher: 'Delcourt-Akata',
+      });
+      expect(mapping.publisher).toBe('Delcourt-Akata');
+    });
+
+    it('liste des éditions : une seule ligne de 18 tomes, qui se rejoue sous son libellé', async () => {
+      const { svc } = makeService(sruResponse(aliceRecords()));
+      const { editions } = await svc.listEditions(
+        ['Alice in Borderland'],
+        ['Alice in Borderland', 'Imawa no Kuni no Alice'],
+        ['Haro Aso'],
+      );
+      expect(
+        editions.map((e) => [
+          e.publisher,
+          e.edition,
+          e.tomeCount,
+          e.sampleIsbn,
+        ]),
+      ).toEqual([['Delcourt', null, 18, '978-alice-1']]);
+
+      const replay = await svc.enumerateEdition(
+        editions[0].seriesTitleFr,
+        editions[0].edition,
+        { publisher: editions[0].publisher! },
+      );
+      expect(replay.tomeCount).toBe(18);
+    });
+
+    it('rattrapage : un tome paru sous un nouveau libellé est trouvé via l’énumération complète', async () => {
+      const t19 = unimarcRecord({
+        isbn: '978-alice-19',
+        title: 'Alice in Borderland',
+        volume: '19',
+        publisher: 'Éditions Delcourt',
+        set: 'Alice in Borderland',
+        setVolume: '19',
+      });
+      const queue = {
+        add: jest.fn((_name: string, data: { url: string }) => {
+          const since = new URL(data.url).searchParams
+            .get('query')!
+            .includes('creationdate');
+          const xml = since
+            ? sruResponse([t19])
+            : sruResponse([...aliceRecords(), t19]);
+          return Promise.resolve({ waitUntilFinished: async () => xml });
+        }),
+      };
+      const cache = {
+        get: jest.fn().mockResolvedValue(null),
+        set: jest.fn().mockResolvedValue(undefined),
+      };
+      const svc = new BnfService(
+        { get: jest.fn() } as never,
+        cache as never,
+        queue as never,
+      );
+      (svc as unknown as { queueEvents: unknown }).queueEvents = {};
+
+      const mapping = await svc.enumerateEdition('Alice in Borderland', null, {
+        publisher: 'Delcourt-Akata',
+        since: '20260901',
+      });
+
+      expect(mapping.tomes.map((t) => t.isbn)).toEqual(['978-alice-19']);
+      expect(queue.add).toHaveBeenCalledTimes(2); // sous-ensemble récent + énumération complète
+    });
   });
 
   it('appartenance : 461$t fait autorité — un spin-off rattaché à un autre ensemble ne vole pas le n°', async () => {

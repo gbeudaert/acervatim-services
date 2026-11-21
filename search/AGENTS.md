@@ -88,6 +88,10 @@ Recherche externe, pivot manga, files BullMQ et cache d'API (NestJS, Prisma, Mar
   service sur le chemin chaud ; le mesurer avant d'ajouter quoi que ce soit d'autre.
 - **Titre de serie d'une pre-notice BnF** : sans 461, 225$a est la collection de l'editeur, pas
   la serie. Ne pas revenir a « 461$t, sinon 225$a, sinon 200$a » (cf. `scanSeriesTitle`).
+- **Un editeur explicite garde ses libelles successifs** (`publisherFamilyOf`) : un libelle qui
+  ne porte aucun n° deja paru rejoint l'edition (Alice in Borderland : Delcourt-Akata, Delcourt,
+  Editions Delcourt). Ne pas revenir au filtre strict (4 tomes au lieu de 18) ni departager par le
+  prefixe ISBN : les romans Ki-oon partagent celui des mangas.
 - **Le mode watch ne voit pas les fichiers modifies depuis Windows** (montage du conteneur) :
   `dist/` reste a l'ancien code. Redemarrer le service (`../scripts/dev.ps1 restart search`).
 - **`scripts` doit rester exclu de `tsconfig.build.json`.** Sinon la racine de compilation

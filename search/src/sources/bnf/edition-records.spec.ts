@@ -11,6 +11,7 @@ import {
   matchesEdition,
   noticeCreationDate,
   normalizePublisher,
+  publisherFamilies,
   readEditionRecord,
   scanSeriesTitle,
   volumeOf,
@@ -221,5 +222,57 @@ describe('scanSeriesTitle — titre de série rendu par le scan', () => {
     expect(series(unimarcRecord({ title: 'Death note', volume: '2' }))).toBe(
       'Death note',
     );
+  });
+});
+
+describe('publisherFamilies — libellés successifs d’un même éditeur', () => {
+  const range = (from: number, to: number) =>
+    new Set(Array.from({ length: to - from + 1 }, (_, i) => from + i));
+
+  it('Alice in Borderland : trois libellés qui se succèdent forment une seule famille', () => {
+    expect(
+      publisherFamilies(
+        new Map([
+          ['delcourt akata', range(1, 4)],
+          ['delcourt', range(5, 18)],
+        ]),
+      ),
+    ).toEqual([['delcourt', 'delcourt akata']]);
+  });
+
+  it('My hero academia : les romans Ki-oon reprennent des n° du manga, ils restent à part', () => {
+    expect(
+      publisherFamilies(
+        new Map([
+          ['ki oon roman', range(1, 5)],
+          ['ki oon', range(1, 42)],
+          ['hachette jeunesse', range(1, 7)],
+        ]),
+      ),
+    ).toEqual([['ki oon'], ['hachette jeunesse'], ['ki oon roman']]);
+  });
+
+  it('2-en-1 France Loisirs : collision avec le libellé principal, famille à part', () => {
+    expect(
+      publisherFamilies(
+        new Map([
+          ['france loisirs', new Set([1, 11])],
+          ['pika', range(1, 12)],
+        ]),
+      ),
+    ).toEqual([['pika'], ['france loisirs']]);
+  });
+
+  it('glouton déterministe : le plus fourni absorbe d’abord, un libellé ne rejoint qu’une famille', () => {
+    // A (1-10) absorbe C (11-15), puis B (11-12) croise C : il ouvre sa propre famille.
+    expect(
+      publisherFamilies(
+        new Map([
+          ['b', range(11, 12)],
+          ['a', range(1, 10)],
+          ['c', range(11, 15)],
+        ]),
+      ),
+    ).toEqual([['a', 'c'], ['b']]);
   });
 });

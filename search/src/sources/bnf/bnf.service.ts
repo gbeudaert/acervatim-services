@@ -39,6 +39,7 @@ import {
   normalizeSeriesKey,
   normalizeVolumeRange,
   projectEditions,
+  publisherFamilyOf,
   readEditionRecord,
   scanSeriesTitle,
   volumeOf,
@@ -215,7 +216,8 @@ export class BnfService implements OnModuleInit, OnModuleDestroy {
    * L'éditeur fait partie de l'identité d'une édition : sans lui, les 2-en-1 France Loisirs
    * (« 11-12 ») prenaient la place des tomes Pika de même numéro dans la « standard » de *L'attaque
    * des titans*. Non précisé, l'éditeur **dominant** gagne les collisions de n° (cf.
-   * {@link keepForDominant}) ; précisé, le filtre est strict.
+   * {@link keepForDominant}) ; précisé, il garde ses libellés successifs (« Delcourt-Akata » puis
+   * « Delcourt »), jamais un autre catalogue qui reprend ses n° (cf. {@link publisherFamilyOf}).
    *
    * @param titleFr  titre FR de la série (ex "L'attaque des titans")
    * @param edition  mention d'édition 205 (ex "Éd. colossale") ; null = édition standard
@@ -255,30 +257,40 @@ export class BnfService implements OnModuleInit, OnModuleDestroy {
       matchesEdition(r, wantEdition, edition, wantSeries),
     );
 
-    // Éditeur retenu : celui demandé (filtre strict), sinon le dominant, qui ne gagne que les
-    // collisions de n° (cf. keepForDominant). En rattrapage (`since`), le sous-ensemble des notices
-    // récentes ne dit rien de l'éditeur dominant (un seul 2-en-1 récent suffirait à le fausser) : on
-    // le calcule sur l'énumération complète, servie par son propre cache.
+    // Notices qui décident des libellés retenus. En rattrapage (`since`), le sous-ensemble des
+    // notices récentes ne dit rien de l'édition (un seul 2-en-1 récent suffirait à fausser le
+    // dominant ; un tome paru sous un nouveau libellé n'aurait rien à quoi se rattacher) : on les juge
+    // sur l'énumération complète, servie par son propre cache.
+    const reference = async (): Promise<EditionRecord[]> => {
+      if (!opts.since) return inEdition;
+      const full = await this.fetchEditionRecords(titleFr);
+      // Des libellés jugés sur une énumération tronquée peuvent être faux : le résultat aussi.
+      complete = complete && full.complete;
+      return full.records
+        .map(readEditionRecord)
+        .filter(
+          (r) =>
+            belongsToSeries(r, wantSeries) &&
+            matchesEdition(r, wantEdition, edition, wantSeries),
+        );
+    };
+
+    // Éditeur retenu : celui demandé et ses libellés successifs (cf. publisherFamilyOf), sinon le
+    // dominant, qui ne gagne que les collisions de n° (cf. keepForDominant).
     let publisherKey: string | null;
     let kept: EditionRecord[];
+    let family = new Set<string>();
     if (opts.publisher !== undefined) {
-      publisherKey = normalizePublisher(opts.publisher);
-      kept = inEdition.filter((r) => r.publisherKey === publisherKey);
-    } else {
-      let reference = inEdition;
-      if (opts.since) {
-        const full = await this.fetchEditionRecords(titleFr);
-        // L'éditeur dominant tiré d'une énumération tronquée peut être faux : le résultat aussi.
-        complete = complete && full.complete;
-        reference = full.records
-          .map(readEditionRecord)
-          .filter(
-            (r) =>
-              belongsToSeries(r, wantSeries) &&
-              matchesEdition(r, wantEdition, edition, wantSeries),
-          );
+      const wanted = normalizePublisher(opts.publisher);
+      publisherKey = wanted;
+      family = new Set([wanted]);
+      // Un seul libellé en jeu : rien à rattacher, pas d'énumération complète en rattrapage.
+      if (inEdition.some((r) => r.publisherKey !== wanted)) {
+        family = publisherFamilyOf(await reference(), wantSeries, wanted);
       }
-      const dominant = dominantPublisher(reference, wantSeries);
+      kept = inEdition.filter((r) => family.has(r.publisherKey));
+    } else {
+      const dominant = dominantPublisher(await reference(), wantSeries);
       publisherKey = dominant.key;
       kept = inEdition.filter((r) => keepForDominant(r, wantSeries, dominant));
     }
@@ -317,7 +329,7 @@ export class BnfService implements OnModuleInit, OnModuleDestroy {
     ).size;
 
     this.logger.log(
-      `bnf: edition title="${titleFr}" edition="${edition ?? 'standard'}" publisher="${publisher ?? '-'}"${opts.publisher === undefined ? ` (dominant, ${otherPublishers} autre(s) libelle(s) : collisions ecartees, trous combles)` : ''}${opts.since ? ` since=${opts.since}` : ''} recordsScanned=${records.length} numberOfRecords=${total} tomesKept=${tomes.length}${complete ? '' : ' TRUNCATED'}${ongoing ? ' ONGOING' : ''}`,
+      `bnf: edition title="${titleFr}" edition="${edition ?? 'standard'}" publisher="${publisher ?? '-'}"${opts.publisher === undefined ? ` (dominant, ${otherPublishers} autre(s) libelle(s) : collisions ecartees, trous combles)` : family.size > 1 ? ` (+${family.size - 1} libelle(s) successif(s) : ${[...family].filter((k) => k !== publisherKey).join(', ')})` : ''}${opts.since ? ` since=${opts.since}` : ''} recordsScanned=${records.length} numberOfRecords=${total} tomesKept=${tomes.length}${complete ? '' : ' TRUNCATED'}${ongoing ? ' ONGOING' : ''}`,
     );
     if (tomes.length === 0 && !opts.since) {
       this.logger.warn(

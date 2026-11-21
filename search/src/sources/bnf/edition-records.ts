@@ -227,19 +227,83 @@ export function dominantPublisher(
   records: EditionRecord[],
   wantKey: string,
 ): DominantPublisher {
-  const volumesByPublisher = new Map<string, Set<number>>();
-  for (const r of records) {
-    const v = volumeOf(r, wantKey);
-    if (v === null) continue;
-    const set = volumesByPublisher.get(r.publisherKey) ?? new Set<number>();
-    set.add(v);
-    volumesByPublisher.set(r.publisherKey, set);
-  }
   let best: DominantPublisher = { key: null, volumes: new Set() };
-  for (const [key, volumes] of volumesByPublisher) {
+  for (const [key, volumes] of volumesByPublisher(records, wantKey)) {
     if (volumes.size > best.volumes.size) best = { key, volumes };
   }
   return best;
+}
+
+/** N° de tome distincts de chaque libellé d'éditeur (clé normalisée), dans l'ordre de rencontre. */
+function volumesByPublisher(
+  records: EditionRecord[],
+  wantKey: string,
+): Map<string, Set<number>> {
+  const out = new Map<string, Set<number>>();
+  for (const r of records) {
+    const v = volumeOf(r, wantKey);
+    if (v === null) continue;
+    const set = out.get(r.publisherKey) ?? new Set<number>();
+    set.add(v);
+    out.set(r.publisherKey, set);
+  }
+  return out;
+}
+
+/**
+ * Regroupe les libellés d'éditeur d'une même édition (série + 205) en **familles** : les noms
+ * successifs d'un même éditeur. La BnF catalogue le libellé imprimé au dépôt légal, et une édition en
+ * change en cours de série : *Alice in Borderland* paraît sous « Delcourt-Akata » (T1-4), « Delcourt »
+ * (T5-8) puis « Éditions Delcourt » (T9-18) ; *Saint Seiya* sous « Tonkam » puis « Delcourt-Tonkam ».
+ * Ces libellés **se succèdent** : aucun n° de tome n'est porté par deux d'entre eux. Un autre catalogue
+ * **reprend** au contraire des n° déjà parus (romans « Ki-oon roman », 2-en-1 France Loisirs) : c'est
+ * ce qui le distingue, pas son nom ni son préfixe ISBN, que les romans Ki-oon partagent avec les
+ * mangas.
+ *
+ * Construction gloutonne et déterministe : libellés par nombre de tomes décroissant (à égalité, ordre
+ * de rencontre) ; chacun ouvre une famille, qui absorbe dans le même ordre tout libellé restant dont
+ * aucun n° ne croise ceux déjà réunis. Partagée par l'énumération ({@link publisherFamilyOf}) et la
+ * liste des éditions, pour qu'une édition listée se rejoue à l'identique.
+ */
+export function publisherFamilies(
+  volumesByLabel: Map<string, Set<number>>,
+): string[][] {
+  const labels = [...volumesByLabel.entries()].sort(
+    (a, b) => b[1].size - a[1].size,
+  );
+  const assigned = new Set<string>();
+  const families: string[][] = [];
+  for (const [head, headVolumes] of labels) {
+    if (assigned.has(head)) continue;
+    assigned.add(head);
+    const family = [head];
+    const taken = new Set(headVolumes);
+    for (const [label, volumes] of labels) {
+      if (assigned.has(label)) continue;
+      if ([...volumes].some((v) => taken.has(v))) continue;
+      assigned.add(label);
+      family.push(label);
+      for (const v of volumes) taken.add(v);
+    }
+    families.push(family);
+  }
+  return families;
+}
+
+/**
+ * Libellés retenus quand l'appelant **précise** l'éditeur : le sien et ceux de sa famille (cf.
+ * {@link publisherFamilies}). Un libellé sans aucun tome numéroté reste seul : rien ne permet de le
+ * rattacher à une famille.
+ */
+export function publisherFamilyOf(
+  records: EditionRecord[],
+  wantKey: string,
+  publisherKey: string,
+): Set<string> {
+  const families = publisherFamilies(volumesByPublisher(records, wantKey));
+  return new Set(
+    families.find((f) => f.includes(publisherKey)) ?? [publisherKey],
+  );
 }
 
 /**
@@ -247,7 +311,8 @@ export function dominantPublisher(
  * **collisions** : un autre libellé d'éditeur n'est écarté que s'il porte un n° que le dominant a
  * déjà (le 2-en-1 « 11-12 » face au T11 Pika). Un n° que seul un autre libellé porte comble un trou —
  * typiquement un changement de raison sociale en cours de série (Tonkam → Delcourt-Tonkam) — et
- * reste. Avec un éditeur explicite, le filtre reste strict (cf. `BnfService.enumerateEdition`).
+ * reste. Avec un éditeur explicite, ce sont des libellés entiers qui se rejoignent ou non (cf.
+ * {@link publisherFamilyOf}).
  */
 export function keepForDominant(
   r: EditionRecord,
@@ -261,9 +326,10 @@ export function keepForDominant(
 
 /**
  * Projette des notices en **éditions** : groupe par (série, éditeur, 205$a), une ligne par groupe
- * ayant au moins un tome numéroté. `matchKeys` = titres connus de la série (FR, romaji, alt-titres
- * MangaDex, saisie) normalisés ; `authorNames` = auteurs MangaDex, qui écartent un homonyme
- * catalogué (un roman dérivé, une autre œuvre du même titre) quand le groupe a des auteurs.
+ * ayant au moins un tome numéroté, les libellés successifs d'un même éditeur réunis en une ligne.
+ * `matchKeys` = titres connus de la série (FR, romaji, alt-titres MangaDex, saisie) normalisés ;
+ * `authorNames` = auteurs MangaDex, qui écartent un homonyme catalogué (un roman dérivé, une autre
+ * œuvre du même titre) quand le groupe a des auteurs.
  */
 export function projectEditions(
   records: EditionRecord[],
@@ -317,16 +383,19 @@ export function projectEditions(
     if (target) addRecord(target, r);
   }
 
+  const eligible = [...groups.values()].filter(
+    (g) =>
+      g.volumes.size > 0 &&
+      // homonyme : même titre, autre œuvre (roman dérivé, guide d'un autre auteur…)
+      !(
+        g.authors.length > 0 &&
+        authorNames.length > 0 &&
+        !matchesAuthor(g.authors, authorNames)
+      ),
+  );
+
   const out: EditionSummary[] = [];
-  for (const g of groups.values()) {
-    if (g.volumes.size === 0) continue;
-    if (
-      g.authors.length > 0 &&
-      authorNames.length > 0 &&
-      !matchesAuthor(g.authors, authorNames)
-    ) {
-      continue; // homonyme : même titre, autre œuvre (roman dérivé, guide d'un autre auteur…)
-    }
+  for (const g of mergeSuccessiveLabels(eligible)) {
     const sortedVolumes = [...g.volumes.keys()].sort((a, b) => a - b);
     const edition = mostFrequent(g.editions);
     out.push({
@@ -375,6 +444,46 @@ export function projectEditions(
     }
     g.titles.push(groupTitle);
     addRecord(g, r);
+  }
+
+  /**
+   * Une ligne par famille de libellés (cf. {@link publisherFamilies}) dans chaque (série, 205) : les
+   * noms successifs d'un éditeur forment une seule édition, que `enumerateEdition` rejoue sous
+   * n'importe lequel d'entre eux. Le groupe le plus fourni absorbe les autres ; ses n° gardent la
+   * priorité.
+   */
+  function mergeSuccessiveLabels(list: Group[]): Group[] {
+    const buckets = new Map<string, Group[]>();
+    for (const g of list) {
+      const id = `${g.seriesKey}|${g.editionKey}`;
+      buckets.set(id, [...(buckets.get(id) ?? []), g]);
+    }
+    const merged: Group[] = [];
+    for (const bucket of buckets.values()) {
+      const byLabel = new Map(bucket.map((g) => [g.publisherKey, g]));
+      const families = publisherFamilies(
+        new Map(bucket.map((g) => [g.publisherKey, new Set(g.volumes.keys())])),
+      );
+      for (const [head, ...rest] of families) {
+        const target = byLabel.get(head)!;
+        for (const label of rest) absorb(target, byLabel.get(label)!);
+        merged.push(target);
+      }
+    }
+    return merged;
+  }
+
+  function absorb(target: Group, g: Group): void {
+    target.titles.push(...g.titles);
+    target.publishers.push(...g.publishers);
+    target.editions.push(...g.editions);
+    target.authors.push(...g.authors);
+    target.years.push(...g.years);
+    for (const [v, r] of g.volumes) {
+      if (!target.volumes.has(v)) target.volumes.set(v, r);
+    }
+    target.ongoing ||= g.ongoing;
+    target.hasRange ||= g.hasRange;
   }
 
   function addRecord(g: Group, r: EditionRecord): void {

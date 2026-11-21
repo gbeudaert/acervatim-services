@@ -211,3 +211,40 @@ export function strangeHouseRecords(): string[] {
     }),
   ];
 }
+
+/**
+ * *Alice in Borderland* (Delcourt), relevé du 2026-11-18 : une seule édition (ISBN 978-2-7560-…)
+ * cataloguée sous trois libellés successifs — « Delcourt-Akata » T1-4, « Delcourt » T5-8,
+ * « Éditions Delcourt » T9-18 —, plus *Alice in Borderland retry* (Delcourt-Tonkam), un autre
+ * ensemble 461 dont le 200$a commence pareil. ISBN simplifiés.
+ */
+export function aliceRecords(): string[] {
+  const tome = (vol: number, publisher: string) =>
+    unimarcRecord({
+      isbn: `978-alice-${vol}`,
+      title: 'Alice in Borderland',
+      volume: String(vol),
+      publisher,
+      date: vol <= 4 ? 'impr. 2013' : 'DL 2015',
+      collection: vol <= 9 ? 'Collection Také' : undefined,
+      set: 'Alice in Borderland',
+      setVolume: String(vol),
+      authors: [['Aso', 'Haro']],
+    });
+  return [
+    ...[1, 2, 3, 4].map((v) => tome(v, 'Delcourt-Akata')),
+    ...[5, 6, 7, 8].map((v) => tome(v, 'Delcourt')),
+    ...Array.from({ length: 10 }, (_, i) => tome(i + 9, 'Éditions Delcourt')),
+    ...[1, 2].map((v) =>
+      unimarcRecord({
+        isbn: `978-retry-${v}`,
+        title: 'Alice in Borderland retry',
+        volume: String(v),
+        publisher: 'Delcourt-Tonkam',
+        set: 'Alice in Borderland retry',
+        setVolume: String(v),
+        authors: [['Aso', 'Haro']],
+      }),
+    ),
+  ];
+}

@@ -100,7 +100,8 @@ export interface EditionTome {
 /** Options d'énumération d'une édition. */
 export interface EnumerateEditionOptions {
   /**
-   * Éditeur de l'édition (libellé libre, normalisé à la comparaison). Absent : l'éditeur
+   * Éditeur de l'édition (libellé libre, normalisé à la comparaison), avec ses libellés successifs
+   * (« Delcourt-Akata » puis « Delcourt », cf. `publisherFamilyOf`). Absent : l'éditeur
    * **dominant** (le plus de tomes numérotés) — une même mention 205 (ou son absence) recouvre
    * plusieurs éditeurs (Pika et les 2-en-1 France Loisirs pour la « standard »).
    */
