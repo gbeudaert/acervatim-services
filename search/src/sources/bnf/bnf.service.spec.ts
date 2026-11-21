@@ -2,6 +2,7 @@ import {
   sakamotoRecords,
   snkRecords,
   sruResponse,
+  strangeHouseRecords,
   unimarcRecord,
 } from '../../../test/fixtures/unimarc';
 import { BadGatewayException } from '@nestjs/common';
@@ -631,6 +632,27 @@ describe('BnfService', () => {
     const { svc } = makeService(sruResponse(records));
     const mapping = await svc.enumerateEdition('Perfect World');
     expect(mapping.tomes.map((t) => t.isbn)).toEqual(['pw-1', 'pw-2', 'pw-3']);
+  });
+
+  it('scan d’une pré-notice : la série est 200$a, pas la collection 225$a (The strange house T2)', async () => {
+    const [, t2] = strangeHouseRecords();
+    const { svc } = makeService(sruResponse([t2]));
+    const res = await svc.resolveByIsbn('9782505129035');
+    expect(res.ok).toBe(true);
+    if (res.ok) {
+      expect(res.notice.seriesTitle).toBe('The strange house');
+      expect(res.notice.volume).toBe('2');
+      expect(res.notice.publisherFr).toBe('Kana');
+    }
+  });
+
+  it('énumère la série d’une pré-notice sans les autres titres de la collection', async () => {
+    const { svc } = makeService(sruResponse(strangeHouseRecords()));
+    const mapping = await svc.enumerateEdition('The strange house');
+    expect(mapping.tomes.map((t) => t.isbn)).toEqual([
+      '978-2-505-12902-8',
+      '978-2-505-12903-5',
+    ]);
   });
 
   it("scan : une 214 d'imprimeur sans $c en tête ne vide pas l'éditeur de la notice", async () => {

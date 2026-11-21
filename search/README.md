@@ -94,6 +94,11 @@ declares, et un participant qui repondrait 404 ferait echouer une saga pour rien
   Google Books par ISBN en repli. Avec le garde-fou des editions d'art - MangaDex indexe par
   numero de tome **sans** dimension edition, donc sur une Colossale ou une Perfect il rendrait
   le visuel du standard.
+- **Le titre de serie du scan ne prend pas 225$a par defaut.** Sur une pre-notice BnF (ni 461
+  ni 410), 225$a est la collection de l'editeur (« Big Kana », « Shonen manga ») : la prendre
+  pour la serie creait dans l'app une serie au nom de la collection, remplie de ses autres
+  titres. 225$a n'est la serie que s'il porte le n° du tome (225$v sans 200$h) ; regle complete
+  et cas reels dans `scanSeriesTitle` (`sources/bnf/edition-records.ts`).
 
 ---
 

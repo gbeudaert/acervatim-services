@@ -119,6 +119,41 @@ export function belongsToSeries(r: EditionRecord, wantKey: string): boolean {
 }
 
 /**
+ * Titre de **série** d'une notice scannée : il nomme la série dans l'app et se rejoue tel quel dans
+ * `edition-mapping` / `import-jobs`. Même constat que {@link belongsToSeries} : « le premier champ
+ * non vide de 461$t → 225$a → 200$a » prenait la collection de l'éditeur pour la série sur une
+ * pré-notice (*The strange house* T2, Kana : ni 461 ni 410, 225$a « Big Kana », 200$h = 2), et le
+ * scan du tome 2 créait une série « Big Kana » remplie des autres titres de la collection.
+ *  - **461$t fait autorité** quand il existe ;
+ *  - un 225$a repris en **410$t** (lien « collection ») n'est jamais la série ;
+ *  - **200$h présent** : le n° de tome qualifie le titre propre, 200$a est la série ;
+ *  - **225$v sans 200$h** : la série est en 225 avec le n°, et 200$a porte le titre du tome
+ *    (Ki-oon, Delcourt-Tonkam : « Le chat porte-bonheur » dans « Le pacte des yôkai ; 3 ») ;
+ *  - aucun n° : 200$a, sauf si le titre uniforme 500$a désigne la collection ; 225$a en dernier
+ *    recours quand la notice n'a pas de titre propre.
+ */
+export function scanSeriesTitle(rec: UnimarcRecord): string | null {
+  const set = firstSubfield(rec, '461', 't');
+  if (set) return set;
+
+  const title = firstSubfield(rec, '200', 'a') ?? null;
+  const rawCollection = firstSubfield(rec, '225', 'a') ?? null;
+  const collectionKey = normalizeSeriesKey(rawCollection);
+  const isCollectionLink =
+    !!collectionKey &&
+    collectionKey ===
+      normalizeSeriesKey(firstSubfield(rec, '410', 't') ?? null);
+  const collection = isCollectionLink ? null : rawCollection;
+  if (!collection) return title ?? rawCollection;
+  if (!title) return collection;
+
+  if (firstSubfield(rec, '200', 'h')) return title;
+  if (firstSubfield(rec, '225', 'v')) return collection;
+  const uniformKey = normalizeSeriesKey(firstSubfield(rec, '500', 'a') ?? null);
+  return uniformKey && uniformKey === collectionKey ? collection : title;
+}
+
+/**
  * Mots-clés d'édition d'art d'une notice **sans 205** (pré-notice), lus dans son titre propre une
  * fois retirés les mots du titre de série : « Hellsing perfect edition » (série « hellsing ») →
  * `perfect` ; mais « Perfect World » (série « perfect world ») → aucun — sans ce retrait, toute

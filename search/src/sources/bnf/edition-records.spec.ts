@@ -1,6 +1,7 @@
 import {
   sakamotoRecords,
   sruResponse,
+  strangeHouseRecords,
   unimarcRecord,
 } from '../../../test/fixtures/unimarc';
 import {
@@ -11,6 +12,7 @@ import {
   noticeCreationDate,
   normalizePublisher,
   readEditionRecord,
+  scanSeriesTitle,
   volumeOf,
 } from './edition-records';
 import { parseUnimarc } from './unimarc.parser';
@@ -158,5 +160,66 @@ describe('belongsToSeries', () => {
   it('pré-notice Sakamoto : 225$a « Shonen manga » ≠ clé, mais 500$a/200$a = clé', () => {
     const r = read(sakamotoRecords()[1]);
     expect(belongsToSeries(r, 'sakamoto days')).toBe(true);
+  });
+});
+
+describe('scanSeriesTitle — titre de série rendu par le scan', () => {
+  const series = (xml: string) =>
+    scanSeriesTitle(parseUnimarc(sruResponse([xml])).records[0]);
+
+  it('notice cataloguée : 461$t fait autorité (The strange house T1)', () => {
+    const [t1] = strangeHouseRecords();
+    expect(series(t1)).toBe('The strange house');
+  });
+
+  it("pré-notice : 225$a = collection de l'éditeur, la série est 200$a (The strange house T2)", () => {
+    const [, t2] = strangeHouseRecords();
+    expect(series(t2)).toBe('The strange house');
+  });
+
+  it('pré-notice Glénat : « Shonen manga » n’est pas la série (Sakamoto days T22)', () => {
+    const [, prenotice] = sakamotoRecords();
+    expect(series(prenotice)).toBe('Sakamoto days');
+  });
+
+  it('225$v sans 200$h : la série est en 225, 200$a porte le titre du tome', () => {
+    const xml = unimarcRecord({
+      title: 'Le chat porte-bonheur',
+      collection: 'Le pacte des yôkai',
+      collectionVolume: '3',
+      uniform: 'Natsume yūjinchō',
+    });
+    expect(series(xml)).toBe('Le pacte des yôkai');
+  });
+
+  it('225 repris en 410$t : collection numérotée, jamais la série', () => {
+    const xml = unimarcRecord({
+      title: 'Montage',
+      collection: 'Big Kana',
+      collectionVolume: '6',
+      collectionLink: 'Big Kana',
+    });
+    expect(series(xml)).toBe('Montage');
+  });
+
+  it('aucun n° : 200$a, sauf si le titre uniforme 500$a désigne la 225', () => {
+    expect(
+      series(unimarcRecord({ title: 'Montage', collection: 'Big Kana' })),
+    ).toBe('Montage');
+    expect(
+      series(
+        unimarcRecord({
+          title: 'Le chat porte-bonheur',
+          collection: 'Le pacte des yôkai',
+          uniform: 'Le pacte des yôkai',
+        }),
+      ),
+    ).toBe('Le pacte des yôkai');
+  });
+
+  it('sans 225 : 200$a', () => {
+    expect(series(unimarcRecord({ title: 'Death note', volume: '2' }))).toBe(
+      'Death note',
+    );
   });
 });

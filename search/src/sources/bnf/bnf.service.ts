@@ -40,6 +40,7 @@ import {
   normalizeVolumeRange,
   projectEditions,
   readEditionRecord,
+  scanSeriesTitle,
   volumeOf,
 } from './edition-records';
 import {
@@ -525,11 +526,9 @@ export class BnfService implements OnModuleInit, OnModuleDestroy {
       // Même lecture que l'énumération (edition-records) : toutes les 210/214, première à porter un
       // $c — une 214 d'imprimeur sans $c placée en tête ne doit pas vider l'éditeur du scan.
       publisherFr: firstSubfieldAmong(rec, ['210', '214'], 'c'),
-      seriesTitle:
-        firstSubfield(rec, '461', 't') ??
-        firstSubfield(rec, '225', 'a') ??
-        firstSubfield(rec, '200', 'a') ??
-        null,
+      // Pas « le premier non vide de 461$t → 225$a → 200$a » : sur une pré-notice, 225$a est la
+      // collection de l'éditeur (cf. `scanSeriesTitle`).
+      seriesTitle: scanSeriesTitle(rec),
       originalTitle,
       originalTitleSource,
       sourceVolumeRange: normalizeVolumeRange(firstSubfield(rec, '454', 'h')),

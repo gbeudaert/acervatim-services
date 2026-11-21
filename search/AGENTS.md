@@ -84,4 +84,6 @@ Recherche externe, pivot manga, files BullMQ et cache d'API (NestJS, Prisma, Mar
   livelock qui resolvait ZERO jaquette.
 - La resolution de jeton est desormais un **appel reseau par requete**. C'est le seul de ce
   service sur le chemin chaud ; le mesurer avant d'ajouter quoi que ce soit d'autre.
+- **Titre de serie d'une pre-notice BnF** : sans 461, 225$a est la collection de l'editeur, pas
+  la serie. Ne pas revenir a « 461$t, sinon 225$a, sinon 200$a » (cf. `scanSeriesTitle`).
 - PowerShell 5.1 : ni `&&` ni `||` (utiliser `; if ($?) { ... }`). Sources `.ps1` en ASCII pur.

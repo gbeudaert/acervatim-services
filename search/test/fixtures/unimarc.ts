@@ -18,6 +18,7 @@ export interface UnimarcSpec {
   date?: string; // 210$d / 214$d
   collection?: string; // 225$a
   collectionVolume?: string; // 225$v
+  collectionLink?: string; // 410$t (lien « collection », notices complètes)
   set?: string; // 461$t
   setVolume?: string; // 461$v
   uniform?: string; // 500$a
@@ -49,6 +50,7 @@ export function unimarcRecord(s: UnimarcSpec): string {
     ${df('205', sf('a', s.edition))}
     ${df(pubTag, sf('c', s.publisher), sf('d', s.date))}
     ${df('225', sf('a', s.collection), sf('v', s.collectionVolume))}
+    ${df('410', sf('t', s.collectionLink))}
     ${df('454', sf('t', s.original), sf('h', s.sourceRange))}
     ${df('461', sf('t', s.set), sf('v', s.setVolume))}
     ${df('500', sf('a', s.uniform))}
@@ -160,6 +162,52 @@ export function sakamotoRecords(): string[] {
         ['Suzuki', 'Yūto'],
         ['Fernande', 'Pierre', 'Traducteur'],
       ],
+    }),
+  ];
+}
+
+/**
+ * *The strange house* (Kana, collection « Big Kana »), relevé du 2026-11-18. Le T1 est catalogué
+ * (461 « fait partie de », 410 collection, 454 titre original) ; le T2 est une **pré-notice** : ni
+ * 461 ni 410 ni 454, 225$a = « Big Kana » sans n°, le n° de tome en 200$h, les auteurs inversés
+ * (700 dessinateur, 702 scénariste). Un autre titre de la collection en pré-notice complète le lot.
+ */
+export function strangeHouseRecords(): string[] {
+  return [
+    unimarcRecord({
+      isbn: '978-2-505-12902-8',
+      title: 'The strange house',
+      volume: '1',
+      statement: 'scénario, Uketsu',
+      publisher: 'Kana',
+      publisherTag: '214',
+      date: '2025',
+      collection: 'Big Kana',
+      collectionLink: 'Big Kana',
+      set: 'The strange house',
+      setVolume: '1',
+      original: 'Hen na ie',
+      authors: [['Uketsu', '']],
+    }),
+    unimarcRecord({
+      isbn: '978-2-505-12903-5',
+      title: 'The strange house',
+      volume: '2',
+      publisher: 'Kana',
+      publisherTag: '214',
+      date: '2025',
+      collection: 'Big Kana',
+      authors: [['Kyo', 'Ayano']],
+      secondary: [['Uketsu', '', 'Auteur du texte']],
+    }),
+    unimarcRecord({
+      isbn: '978-2-505-12023-0',
+      title: 'Kowloon',
+      volume: '8',
+      publisher: 'Kana',
+      publisherTag: '214',
+      date: '2025',
+      collection: 'Big Kana',
     }),
   ];
 }

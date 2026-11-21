@@ -42,9 +42,11 @@ export interface BnfNotice {
   publisherFr: string | null;
   /**
    * Titre de la **série** FR, pour énumérer tous les tomes et nommer la série.
-   * Source : `461$t` (lien « fait partie de », fiable) → `225$a` (collection) →
-   * `titleFr` (200$a) en dernier recours. Distinct de `titleFr` qui, chez certains
-   * éditeurs (Ki-oon), porte le titre du **tome** (ex "Je vais te tuer") et non de la série.
+   * Source : `461$t` (lien « fait partie de », fiable), sinon `225$a` seulement s'il numérote le
+   * tome, sinon `titleFr` (200$a) — règle complète dans `scanSeriesTitle` (edition-records). Une
+   * pré-notice porte en 225$a la collection de l'éditeur (« Big Kana »), pas la série. Distinct de
+   * `titleFr` qui, chez certains éditeurs (Ki-oon), porte le titre du **tome** (ex "Je vais te
+   * tuer") et non de la série.
    */
   seriesTitle: string | null;
   /** 454$t (fallback 500$a) — titre original (romaji), pont vers MAL. */
