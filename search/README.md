@@ -181,8 +181,9 @@ famille de cles.
   justifie ; personne ne l'a mesure.
 - **Recalibrer les limiters** sur les budgets reels des comptes Discogs et MAL. Les valeurs
   actuelles viennent du monolithe et n'ont jamais ete confrontees a un quota mesure.
-- **Jeux de societe** : cle de production GameUPC, ses quotas reels (2 + 1 req/s provisoires),
-  licence BGG. Liste complete dans `gameupc-bgg.md`, section 8.
+- **Jeux de societe** : cle de production GameUPC accordee le 2026-11-18 ; debit borne a
+  20 jobs/min au total (15 consultations + 5 votes), sous les ~30 req/min que le mainteneur
+  indique. Reste la licence BGG. Liste complete dans `gameupc-bgg.md`, section 8.
 - **Cle de cache et jeton** : les cles sont partagees entre utilisateurs, y compris entre un
   appel BYOT et un appel serveur. C'est voulu (donnees publiques) mais cela signifie qu'un
   utilisateur avec sa propre cle beneficie du cache rempli par le repli premium, et

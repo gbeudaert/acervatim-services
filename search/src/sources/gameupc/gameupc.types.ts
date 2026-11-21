@@ -207,12 +207,25 @@ export const GAMEUPC_FEEDBACK_QUEUE = 'gameupc-feedback';
 export const GAMEUPC_VOTE_JOB = 'vote';
 
 /**
- * Débit sortant. GameUPC ne publie **aucune** limite (seul un `429 Overloaded` est documenté) :
- * valeurs provisoires, à réaligner sur ses conditions une fois la clé de production obtenue.
- * Total ≤ 3 req/s, très en dessous de ce qu'un usage humain du scan produit.
+ * Débit sortant : **20 jobs par minute au total**, consultations et votes confondus.
+ *
+ * GameUPC n'a pas de limite à proprement parler (courriel du mainteneur, 2026-11-18), mais la
+ * première consultation d'un code interroge des fournisseurs qu'il paie (Google, eBay…), qui
+ * renvoient des `429` au-delà d'environ 30 requêtes par minute ; GameUPC répond alors avec des
+ * suggestions dégradées. On lui a écrit rester sous 30 : 20 laisse la marge.
+ *
+ * Un job à la fois, espacé (`max: 1`) plutôt qu'une rafale par fenêtre : une fenêtre de 60 s
+ * laisserait passer deux rafales à cheval sur sa limite. Partage 15 + 5 : le scan attend
+ * (`LOOKUP_WAIT_MS`), le vote non. Un job fait d'ordinaire un appel HTTP ; il en fait deux sur
+ * la seconde chance courte d'une consultation, ou sur la relecture du vote d'un job retenté.
+ * Ces cas ne surviennent que sur une erreur, et la marge sous 30 les absorbe.
+ *
+ * Conséquence : dans une rafale de scans de codes absents du cache, seuls les deux premiers
+ * environ répondent dans l'attente du scan ; les suivants finissent en tâche de fond, et leur
+ * réponse, mise en cache, sert le scan suivant.
  */
-export const GAMEUPC_LOOKUP_LIMITER = { max: 2, duration: 1000 };
-export const GAMEUPC_FEEDBACK_LIMITER = { max: 1, duration: 1000 };
+export const GAMEUPC_LOOKUP_LIMITER = { max: 1, duration: 4_000 };
+export const GAMEUPC_FEEDBACK_LIMITER = { max: 1, duration: 12_000 };
 
 /** Pause de la file sur `429` sans `Retry-After`. */
 export const GAMEUPC_RATE_LIMIT_PAUSE_MS = 30_000;
