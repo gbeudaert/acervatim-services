@@ -2,8 +2,11 @@
 # + single-flight), de la file `brickset` de `rebrickable-data` (inactive tant que
 # BRICKSET_API_KEY est absente) et du cache premium du gateway (TTL 60 s, cf. 3.6).
 #
-# Nom et volume distincts de ceux du monolithe (`acervatim-redis` / `acervatim-redis-data`),
-# pour que les deux stacks cohabitent pendant la bascule.
+# Nom de fichier, donc d'unite, nom de conteneur et volume distincts de ceux du monolithe
+# (`acervatim-redis.container` / `acervatim-redis` / `acervatim-redis-data`), pour que les deux
+# stacks cohabitent pendant la bascule. Quadlet tire le nom de l'unite du nom du fichier : un
+# fichier `acervatim-redis.container` copie dans ~/.config/containers/systemd/ ecraserait
+# celui du monolithe, deja installe sur l'hote.
 #
 # ### Ce que perd un redemarrage
 #
@@ -16,7 +19,7 @@
 # memoire le ferait disparaitre sans trace, et un moissonnage interrompu ne se signale pas.
 #
 # Installation (rootless) :
-#   cp acervatim-redis.container ~/.config/containers/systemd/
+#   cp acervatim-services-redis.container ~/.config/containers/systemd/
 #   systemctl --user daemon-reload && systemctl --user start acervatim-services-redis
 
 [Unit]

@@ -15,7 +15,7 @@ Meme famille de conventions que le monolithe (`../../../acervatim-backend/deploy
 | [`acervatim-secrets.example.yaml`](acervatim-secrets.example.yaml) | Gabarit du Secret. La copie remplie ne se versionne pas. |
 | [`acervatim-services.network`](acervatim-services.network) | Reseau Podman de la constellation. |
 | [`acervatim-db.container`](acervatim-db.container) | MariaDB - une instance, onze schemas. |
-| [`acervatim-redis.container`](acervatim-redis.container) | Redis - files BullMQ et cache premium. |
+| [`acervatim-services-redis.container`](acervatim-services-redis.container) | Redis - files BullMQ et cache premium. |
 | [`Dockerfile.migrate`](Dockerfile.migrate) + [`migrate.sh`](migrate.sh) | Image unique qui migre les onze schemas en sequence. |
 | [`build-images.ps1`](build-images.ps1) | Construit les douze images (onze services + migration). |
 
@@ -30,14 +30,14 @@ Les onze services deployes : `gateway`, `identity`, `billing`, `connections`, `s
 
 ```
                     systemd --user
-  ┌──────────────────────┬─────────────────────┬────────────────────────┐
-  │ acervatim-db.service │ acervatim-redis.svc │   acervatim.service    │
-  │ (MariaDB, 10 schemas)│  (BullMQ + premium) │   podman kube play     │
-  └──────────┬───────────┴──────────┬──────────┴───────────┬────────────┘
-             │                      │                      │
-             └────── reseau podman « acervatim-services » ──┘
-                                                            │
-                                    pod « acervatim » ──────┘
+  ┌──────────────────────┬──────────────────────────┬────────────────────────┐
+  │ acervatim-db.service │ acervatim-services-redis │   acervatim.service    │
+  │ (MariaDB, 10 schemas)│   (BullMQ + premium)     │   podman kube play     │
+  └──────────┬───────────┴────────────┬─────────────┴───────────┬────────────┘
+             │                        │                         │
+             └──────── reseau podman « acervatim-services » ────┘
+                                                                │
+                                    pod « acervatim » ──────────┘
                             ┌───────────────────────────────────────┐
                   :3100 ────┤ gateway  identity  billing  ...       │
                   (hote)    │  ── tous en localhost:31xx ──         │
@@ -107,7 +107,7 @@ cp deploy/*.network deploy/*.container deploy/*.kube ~/.config/containers/system
 systemctl --user daemon-reload
 
 # 7. Demarrage
-systemctl --user start acervatim-db acervatim-redis
+systemctl --user start acervatim-db acervatim-services-redis
 systemctl --user start acervatim
 
 # 8. Survie hors session SSH - sans ca, tout s'arrete a la deconnexion
@@ -237,7 +237,12 @@ Tout est nomme distinctement pour que les deux stacks tournent en parallele pend
 | Redis | `acervatim-redis` | `acervatim-services-redis` |
 | Volume Redis | `acervatim-redis-data` | `acervatim-services-redis-data` |
 | Port publie | 3000 | 3100 |
-| Unites | `acervatim-api`, `acervatim-redis` | `acervatim`, `acervatim-db`, `acervatim-redis` |
+| Unites | `acervatim-api`, `acervatim-redis` | `acervatim`, `acervatim-db`, `acervatim-services-redis` |
+
+Les unites Quadlet prennent le nom de leur fichier : c'est pourquoi le Redis de la
+constellation s'appelle `acervatim-services-redis.container`. Un fichier
+`acervatim-redis.container` copie a l'etape 6 du 3 remplacerait celui du monolithe, deja
+installe sur l'hote.
 
 Cote app, la bascule se resume a faire pointer le reverse proxy de 3000 vers 3100 : le contrat
 `/v1/*` est identique, c'est toute la contrainte du decoupage. **Cote donnees, non** : la

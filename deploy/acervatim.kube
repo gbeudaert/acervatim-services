@@ -36,7 +36,7 @@
 #        cp deploy/*.network deploy/*.container deploy/*.kube ~/.config/containers/systemd/
 #        systemctl --user daemon-reload
 #   5. Demarrer :
-#        systemctl --user start acervatim-db acervatim-redis
+#        systemctl --user start acervatim-db acervatim-services-redis
 #        systemctl --user start acervatim
 #   6. Survie hors session SSH (sinon tout s'arrete a la deconnexion) :
 #        loginctl enable-linger $USER
@@ -62,8 +62,8 @@ Description=Acervatim - constellation micro-services (pod applicatif)
 # La base et Redis doivent tourner AVANT : les migrations s'executent en initContainer et
 # echouent - donc empechent le pod de demarrer - si la base n'est pas la.
 # `Requires=` et non `Wants=` : un pod applicatif sans base n'a aucun mode degrade utile.
-Requires=acervatim-db.service acervatim-redis.service
-After=acervatim-db.service acervatim-redis.service
+Requires=acervatim-db.service acervatim-services-redis.service
+After=acervatim-db.service acervatim-services-redis.service
 After=network-online.target
 Wants=network-online.target
 
