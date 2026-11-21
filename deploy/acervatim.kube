@@ -1,8 +1,9 @@
 # Quadlet Podman de la constellation micro-services Acervatim.
 #
 # Les onze services applicatifs tournent dans **un seul pod**, decrit par `acervatim.yaml`.
-# MariaDB et Redis sont a cote, en unites `.container` distinctes : ils ont un cycle de vie
-# propre et ne doivent pas redemarrer a chaque livraison de code (cf. acervatim-db.container).
+# Redis est a cote, en unite `.container` distincte : il a un cycle de vie propre et ne doit
+# pas redemarrer a chaque livraison de code. La base est celle du monolithe : onze schemas
+# `acv_*` sur son instance MariaDB, hors de l'hote (decision D1 du 2026-11-21).
 #
 # ### Pourquoi un pod unique plutot que onze
 #
@@ -22,27 +23,14 @@
 #
 # ### Installation (rootless)
 #
-#   1. Construire les images :        ./deploy/build-images.ps1
-#   2. Preparer le dossier de deploiement :
-#        mkdir -p ~/acervatim/db-init
-#        cp deploy/../db/init/01-schemas.sql ~/acervatim/db-init/
-#        cp deploy/acervatim-secrets.example.yaml ~/acervatim/acervatim-secrets.yaml
-#        chmod 600 ~/acervatim/acervatim-secrets.yaml     # PUIS le remplir
-#   3. Assembler le manifeste joue (secrets + ConfigMap + Pod) :
-#        cat ~/acervatim/acervatim-secrets.yaml deploy/acervatim.yaml \
-#          > ~/acervatim/acervatim.yaml
-#        chmod 600 ~/acervatim/acervatim.yaml
-#   4. Installer les unites :
-#        cp deploy/*.network deploy/*.container deploy/*.kube ~/.config/containers/systemd/
-#        systemctl --user daemon-reload
-#   5. Demarrer :
-#        systemctl --user start acervatim-db acervatim-services-redis
-#        systemctl --user start acervatim
-#   6. Survie hors session SSH (sinon tout s'arrete a la deconnexion) :
-#        loginctl enable-linger $USER
+# Par l'archive de deploiement : `deploy/build-archive.ps1` la construit, `deploiement.sh` la
+# deroule sur l'hote (deploy/README.md, 3). Le script compose le manifeste joue dans
+# `~/acervatim-services/config/acervatim.yaml` (secrets + ConfigMap + Pod, en 600) : il porte
+# les secrets et ne vit jamais dans le depot. Il installe `acervatim-services.network`,
+# `acervatim-services-redis.container` et cette unite dans `~/.config/containers/systemd/`.
 #
-# Le manifeste assemble vit dans `~/acervatim/` et non dans le depot : il porte les secrets.
-# Le regenerer (etape 3) apres toute modification de `deploy/acervatim.yaml`.
+# Variante base locale (developpement, repetition) : installer aussi acervatim-db.container et
+# ajouter `acervatim-db.service` aux `Requires=` et `After=` ci-dessous.
 #
 # ### Verification
 #
@@ -59,19 +47,19 @@
 
 [Unit]
 Description=Acervatim - constellation micro-services (pod applicatif)
-# La base et Redis doivent tourner AVANT : les migrations s'executent en initContainer et
-# echouent - donc empechent le pod de demarrer - si la base n'est pas la.
-# `Requires=` et non `Wants=` : un pod applicatif sans base n'a aucun mode degrade utile.
-Requires=acervatim-db.service acervatim-services-redis.service
-After=acervatim-db.service acervatim-services-redis.service
+# Redis doit tourner AVANT. La base, distante, n'a pas d'unite ici : les migrations, en
+# initContainer, attendent qu'elle accepte les connexions (migrate.sh, DB_WAIT_SECONDS) et
+# empechent le pod de demarrer si elle reste injoignable.
+Requires=acervatim-services-redis.service
+After=acervatim-services-redis.service
 After=network-online.target
 Wants=network-online.target
 
 [Kube]
-# Manifeste assemble (Secret + ConfigMap + Pod). Voir l'etape 3 ci-dessus.
-Yaml=%h/acervatim/acervatim.yaml
-# Reseau partage avec la base et Redis : c'est par lui que le pod resout `acervatim-db` et
-# `acervatim-services-redis`. Les onze services, eux, se parlent en `localhost`.
+# Manifeste joue (Secret + ConfigMap + Pod), compose par deploiement.sh.
+Yaml=%h/acervatim-services/config/acervatim.yaml
+# Reseau partage avec Redis : c'est par lui que le pod resout `acervatim-services-redis`. Les
+# onze services, eux, se parlent en `localhost`.
 Network=acervatim-services.network
 # `--replace` implicite au demarrage : une relivraison remplace le pod au lieu d'echouer sur
 # un nom deja pris.

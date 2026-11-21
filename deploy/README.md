@@ -30,18 +30,21 @@ Les onze services deployes : `gateway`, `identity`, `billing`, `connections`, `s
 
 ```
                     systemd --user
-  ┌──────────────────────┬──────────────────────────┬────────────────────────┐
-  │ acervatim-db.service │ acervatim-services-redis │   acervatim.service    │
-  │ (MariaDB, 10 schemas)│   (BullMQ + premium)     │   podman kube play     │
-  └──────────┬───────────┴────────────┬─────────────┴───────────┬────────────┘
-             │                        │                         │
-             └──────── reseau podman « acervatim-services » ────┘
-                                                                │
-                                    pod « acervatim » ──────────┘
+              ┌──────────────────────────┬────────────────────────┐
+              │ acervatim-services-redis │   acervatim.service    │
+              │   (BullMQ + premium)     │   podman kube play     │
+              └────────────┬─────────────┴───────────┬────────────┘
+                           │                         │
+                reseau podman « acervatim-services » │
+                                                     │
+                                 pod « acervatim » ──┘
                             ┌───────────────────────────────────────┐
                   :3100 ────┤ gateway  identity  billing  ...       │
                   (hote)    │  ── tous en localhost:31xx ──         │
-                            └───────────────────────────────────────┘
+                            └──────────────────┬────────────────────┘
+                                               │ 3306
+                            instance MariaDB du monolithe, hors de l'hote
+                            (schema `acervatim` + onze schemas `acv_*`)
 ```
 
 ### Un seul pod pour les onze services
@@ -67,55 +70,69 @@ deploiement de code : un arret de service pour une raison qui ne la concerne pas
 fenetre de corruption a chaque fois.
 
 C'est aussi ce qui rend les migrations propres : elles tournent en **initContainer**, donc
-avant le moindre service, et la base est deja prete parce que systemd l'a demarree avant
-(`Requires=` + `After=`).
+avant le moindre service, et `migrate.sh` attend que la base accepte les connexions avant de
+commencer.
 
-Si la base est deportee sur un NAS, comme pour le monolithe : ne pas installer
-`acervatim-db.container` et pointer les `DATABASE_URL_*` vers l'hote distant. Rien d'autre ne
-change.
+**La base est celle du monolithe** (decision D1 du 2026-11-21) : les onze schemas `acv_*`
+vivent sur son instance MariaDB, hors de l'hote, a cote du schema `acervatim`, avec le meme
+compte SQL. `acervatim-db.container` n'est donc pas installe en production ; il reste pour une
+base locale (fin du 3). La reprise passe quand meme par un fichier de vidage : c'est aussi le
+point de retour.
 
 ---
 
-## 3. Installation
+## 3. Installation : une archive, un script
 
-```bash
-# 1. Les images (sur l'hote de deploiement : Prisma genere l'engine de l'arch du BUILD)
-./deploy/build-images.ps1
+L'hote n'a ni sources ni outils de build. Le poste de build produit une archive ; sur l'hote, un
+script la deroule par etapes.
 
-# 2. Le dossier de deploiement
-mkdir -p ~/acervatim/db-init
-cp db/init/01-schemas.sql ~/acervatim/db-init/
+**Sur le poste de build** (Docker Desktop), depuis un commit etiquete `v<version>` :
 
-# 3. Le mot de passe de la base
-cat > ~/acervatim/db.env <<'EOF'
-MARIADB_ROOT_PASSWORD=...
-MARIADB_PASSWORD=...
-EOF
-chmod 600 ~/acervatim/db.env
-
-# 4. Les secrets applicatifs
-cp deploy/acervatim-secrets.example.yaml ~/acervatim/acervatim-secrets.yaml
-chmod 600 ~/acervatim/acervatim-secrets.yaml
-$EDITOR ~/acervatim/acervatim-secrets.yaml
-
-# 5. Le manifeste joue = secrets + manifeste
-cat ~/acervatim/acervatim-secrets.yaml deploy/acervatim.yaml > ~/acervatim/acervatim.yaml
-chmod 600 ~/acervatim/acervatim.yaml
-
-# 6. Les unites
-cp deploy/*.network deploy/*.container deploy/*.kube ~/.config/containers/systemd/
-systemctl --user daemon-reload
-
-# 7. Demarrage
-systemctl --user start acervatim-db acervatim-services-redis
-systemctl --user start acervatim
-
-# 8. Survie hors session SSH - sans ca, tout s'arrete a la deconnexion
-loginctl enable-linger $USER
+```powershell
+./deploy/build-archive.ps1 -Version <version>      # arm64 par defaut, sous emulation
 ```
 
-**Le manifeste joue vit dans `~/acervatim/`, pas dans le depot**, parce qu'il porte les
-secrets. Le regenerer (etape 5) apres toute modification de `deploy/acervatim.yaml`.
+Il construit les douze images, prend Redis et un client MariaDB dans la meme architecture,
+controle que le `node` et les moteurs Prisma de chaque image sont bien de cette architecture (le
+piege du 7), puis ecrit hors du depot `..\archives\acervatim-services-<version>-arm64\` : l'archive
+`.tar` (images comprises, environ 1,3 Gio) et `deploiement.sh` a cote. `-Brouillon` accepte un
+arbre modifie pour une repetition ; l'archive est alors marquee.
+
+**Sur l'hote**, avec l'utilisateur qui fait tourner le monolithe, apres copie de ce dossier :
+
+```sh
+sh deploiement.sh acervatim-services-<version>-arm64.tar --jusqua 7   # a l'avance : monolithe intact
+sh deploiement.sh acervatim-services-<version>-arm64.tar               # le jour de la bascule
+sh deploiement.sh statut                                                 # a tout moment
+```
+
+| N° | Etape | Ce qui se passe |
+|---|---|---|
+| 0 | Verifications | architecture, Podman avec Quadlet (version minimale controlee), `systemd --user`, linger, place, memoire, port 3100 |
+| 1 | Extraction | dans `~/acervatim-services/<version>/`, empreintes de `SHA256SUMS` controlees |
+| 2 | Images | `podman load`, directement depuis l'archive |
+| 3 | Secrets | **ceux du monolithe**, lus dans l'environnement du conteneur `acervatim-api` ; compte SQL compris ; seuls les secrets internes sont generes |
+| 4 | Schemas | onze `acv_*` **sur l'instance MariaDB du monolithe**, avec son compte (ou un compte d'administration si le sien n'en a pas le droit) |
+| 5 | Unites | `acervatim.kube`, Redis, reseau ; manifeste joue `~/acervatim-services/config/acervatim.yaml` (600) |
+| 6 | Demarrage | Redis, puis le pod ; migrations en initContainer |
+| 7 | Fumee | `deploy/tests/fumee.sh` : sondes, refus sans jeton, route admin, OpenAPI |
+| 8 | Reprise | secrets compares, files du monolithe vides, `GELER`, arret de `acervatim-api`, vidage, `reprise.sh all` et `registry` |
+| 9 | Relecture | `deploy/tests/relecture.js` : chaque utilisateur repris retrouve ses collections et leurs items |
+| 10 | Proxy | manuel : le script dit quoi changer, attend `FAIT`, verifie l'URL publique |
+| 11 | Apres | `acv_legacy` supprime, unite du monolithe mise de cote, vidage a detruire plus tard |
+
+Une etape reussie est notee dans `~/acervatim-services/etat-<version>` : relancer le script
+reprend a la premiere qui ne l'est pas. Chaque execution a son journal dans
+`~/acervatim-services/journal/`, sans aucun secret. `sh deploiement.sh retour` revient au
+monolithe ; `sh deploiement.sh desinstaller` retire la constellation et ses schemas avant la
+bascule, sans toucher au monolithe.
+
+**Le manifeste joue vit dans `~/acervatim-services/config/`, jamais dans le depot**, parce qu'il
+porte les secrets. `deploiement.sh` le recompose a l'etape 5.
+
+**Variante base locale** (developpement, essai isole) : `acervatim-db.container` reste
+disponible. Il faut alors l'installer, ajouter `acervatim-db.service` aux `Requires=` et `After=`
+de `acervatim.kube`, et pointer les `DATABASE_URL_*` sur `acervatim-db`.
 
 ### Verification
 
@@ -177,10 +194,13 @@ au premier acces.
 Diagnostic hors pod :
 
 ```bash
-podman run --rm --network acervatim-services \
-  -e DATABASE_URL_IDENTITY='mysql://acervatim:...@acervatim-db:3306/acv_core' \
+podman run --rm --network acervatim-services -e DB_HOST=<instance> \
+  -e DATABASE_URL_IDENTITY='mysql://acervatim:...@<instance>:3306/acv_core' \
   localhost/acervatim-migrate:0.1.0
 ```
+
+(Les URL completes sont dans `~/acervatim-services/config/acervatim-secrets.yaml` ; `-e` sur une
+ligne de commande les rend lisibles dans la liste des processus : diagnostic ponctuel seulement.)
 
 Une variable par schema a migrer ; celles qui manquent sont ignorees, ce qui permet de rejouer
 un seul service.
@@ -237,7 +257,9 @@ Tout est nomme distinctement pour que les deux stacks tournent en parallele pend
 | Redis | `acervatim-redis` | `acervatim-services-redis` |
 | Volume Redis | `acervatim-redis-data` | `acervatim-services-redis-data` |
 | Port publie | 3000 | 3100 |
-| Unites | `acervatim-api`, `acervatim-redis` | `acervatim`, `acervatim-db`, `acervatim-services-redis` |
+| Unites | `acervatim-api`, `acervatim-redis` | `acervatim`, `acervatim-services-redis` |
+| Base | schema `acervatim` | schemas `acv_*`, sur la meme instance, avec le meme compte |
+| Dossier | `~/acervatim/` | `~/acervatim-services/` |
 
 Les unites Quadlet prennent le nom de leur fichier : c'est pourquoi le Redis de la
 constellation s'appelle `acervatim-services-redis.container`. Un fichier
@@ -276,18 +298,31 @@ developpement amd64, dans un projet compose jetable dont le reseau n'a aucune so
 - `acervatim.yaml` et le gabarit de secrets se lisent comme du YAML (seuls et concatenes), et
   chaque `secretKeyRef` du Pod a sa cle dans le gabarit.
 
+**Verifie le 2026-11-21, en repetition** : l'archive amd64 deroulee par `deploiement.sh`, sous
+Podman rootless dans une distribution WSL dediee, avec le monolithe de la production (reconstruit
+depuis son etiquette) en service sur une instance MariaDB distincte (adresse factice, compte
+limite a `acervatim`), et un nginx local en guise de reverse proxy :
+
+- premier `podman kube play` du manifeste par Quadlet : `hostPort`, `envFrom.secretRef`,
+  `secretKeyRef` et `initContainers` ensemble ; les onze schemas migres sur l'instance distante ;
+  les onze services prets, `fumee.sh` vert (18 controles) ;
+- secrets repris de l'environnement du conteneur du monolithe, empreintes identiques ; chemin du
+  compte d'administration a l'etape 4 ; reprise conforme (22 tables, 5 invariants, registre de
+  18 entrees), `relecture.js` et `parcours.js` conformes ; bascule du proxy ; puis `retour` et
+  `desinstaller`, base du monolithe identique a la somme de controle pres ;
+- trois defauts trouves et corriges : `migrate.sh` en CRLF dans l'image (arbre de travail
+  Windows), des cles vides refusees par `billing` (`GOOGLE_PLAY_*`), un `podman run -i` qui
+  mangeait les reponses tapees. Note : quinze redemarrages du pod enchaines en pleine
+  initialisation ont laisse 150 connexions orphelines sur l'instance (refus `1040`) ; un
+  redemarrage normal n'en laisse aucune. L'etape 4 releve la marge de connexions.
+
 A dire clairement, parce que rien de ce qui suit n'a tourne :
 
-- **Aucune image n'a ete construite sous Podman**, ni sur l'architecture de l'hote de
-  deploiement : seulement sous Docker, en amd64 (pour la mesure memoire du 2026-11-14, puis
-  `rebrickable-data` et `acervatim-migrate` ci-dessus).
-- **Aucun `podman kube play` n'a ete lance.** Le manifeste est ecrit contre le comportement
-  documente de Podman ; `hostPort` dans un pod, `envFrom.secretRef` et `initContainers` sont
-  des fonctionnalites supportees, mais leur combinaison exacte reste a eprouver.
-- **Les migrations n'ont ete jouees que contre des bases de developpement ou jetables**, jamais
-  contre celle de l'hote. Elles sont ecrites a la main, pas generees par `prisma migrate dev`.
-  Le premier demarrage est le vrai test - et c'est precisement pour cela qu'elles echouent
-  bruyamment plutot que silencieusement.
+- **Rien en arm64 ni sur l'hote** : ni construction arm64 de l'archive (sous emulation), ni
+  `kube play` sur l'hote, ni migrations contre l'instance reelle du monolithe. Les migrations
+  sont ecrites a la main, pas generees par `prisma migrate dev` : le premier demarrage sur
+  l'hote est le vrai test - et c'est precisement pour cela qu'elles echouent bruyamment plutot
+  que silencieusement. Les etapes 0 a 7 de `deploiement.sh` le font sans toucher au monolithe.
 - **L'import des vrais CSV de Rebrickable n'a pas tourne en image de production** : il a tourne
   en developpement (README racine, 6), et sa memoire a ete mesuree sur des CSV synthetiques.
 - **`readOnlyRootFilesystem` n'est pas active**, alors qu'il est desormais a portee :

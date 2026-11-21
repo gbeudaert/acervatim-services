@@ -9,7 +9,7 @@
 # Les etapes sont separees pour pouvoir etre rejouees une a une le jour de la bascule ;
 # `all` enchaine load, transform et verify.
 #
-#   reprise.sh dump <fichier>     vidage de la base du monolithe (conteneur SOURCE_CONTAINER)
+#   reprise.sh dump <fichier>     vidage de la base du monolithe (SOURCE_CONTAINER ou _HOST)
 #   reprise.sh load <fichier>     chargement du vidage dans acv_legacy (recree a chaque fois)
 #   reprise.sh check              preconditions seules
 #   reprise.sh transform          preconditions, repartition, controle
@@ -22,12 +22,18 @@
 # Variables :
 #   ENGINE                 docker | podman (defaut : podman s'il est installe, sinon docker)
 #   TARGET_CONTAINER       MariaDB de la constellation (defaut : acervatim-db)
+#   TARGET_DB_HOST         instance distante : le client tourne alors dans un conteneur jetable
+#                          (CLIENT_IMAGE) au lieu d'entrer dans TARGET_CONTAINER
+#   TARGET_DB_PORT         defaut : 3306
 #   TARGET_DB_USER         defaut : root - la reprise ecrit dans tous les schemas
 #   TARGET_DB_PASSWORD     obligatoire, sauf pour dump
 #   SOURCE_CONTAINER       MariaDB du monolithe, pour dump seulement
+#   SOURCE_DB_HOST         instance distante du monolithe, a la place de SOURCE_CONTAINER
+#   SOURCE_DB_PORT         defaut : 3306
 #   SOURCE_DATABASE        defaut : acervatim
 #   SOURCE_DB_USER         defaut : root
 #   SOURCE_DB_PASSWORD     obligatoire pour dump
+#   CLIENT_IMAGE           client MariaDB des instances distantes (defaut : mariadb:10.11)
 #   GATEWAY_URL            defaut : http://localhost:3100, pour registry
 #   ADMIN_API_TOKEN        obligatoire pour registry (la route est sous AdminGuard)
 #
@@ -43,8 +49,13 @@ SQL_DIR="$HERE/sql"
 
 : "${ENGINE:=}"
 : "${TARGET_CONTAINER:=acervatim-db}"
+: "${TARGET_DB_HOST:=}"
+: "${TARGET_DB_PORT:=3306}"
 : "${TARGET_DB_USER:=root}"
 : "${SOURCE_CONTAINER:=}"
+: "${SOURCE_DB_HOST:=}"
+: "${SOURCE_DB_PORT:=3306}"
+: "${CLIENT_IMAGE:=docker.io/library/mariadb:10.11}"
 : "${SOURCE_DATABASE:=acervatim}"
 : "${SOURCE_DB_USER:=root}"
 : "${GATEWAY_URL:=http://localhost:3100}"
@@ -62,11 +73,30 @@ if [ -z "$ENGINE" ]; then
   if command -v podman >/dev/null 2>&1; then ENGINE=podman; else ENGINE=docker; fi
 fi
 
-# Client SQL dans le conteneur cible. Arguments supplementaires passes a `mariadb`.
+# Client SQL de la cible. Arguments supplementaires passes a `mariadb`. Avec TARGET_DB_HOST,
+# l'instance est ailleurs (celle du monolithe, par exemple) : le client tourne dans un
+# conteneur jetable au lieu d'entrer dans celui de la base.
 target_sql() {
   [ -n "${TARGET_DB_PASSWORD:-}" ] || die "TARGET_DB_PASSWORD absent"
-  MYSQL_PWD="$TARGET_DB_PASSWORD" "$ENGINE" exec -i -e MYSQL_PWD "$TARGET_CONTAINER" \
-    mariadb --user="$TARGET_DB_USER" --default-character-set=utf8mb4 "$@"
+  if [ -n "$TARGET_DB_HOST" ]; then
+    MYSQL_PWD="$TARGET_DB_PASSWORD" "$ENGINE" run --rm -i -e MYSQL_PWD "$CLIENT_IMAGE" \
+      mariadb --host="$TARGET_DB_HOST" --port="$TARGET_DB_PORT" --user="$TARGET_DB_USER" \
+      --default-character-set=utf8mb4 "$@"
+  else
+    MYSQL_PWD="$TARGET_DB_PASSWORD" "$ENGINE" exec -i -e MYSQL_PWD "$TARGET_CONTAINER" \
+      mariadb --user="$TARGET_DB_USER" --default-character-set=utf8mb4 "$@"
+  fi
+}
+
+# mariadb-dump de la source : dans son conteneur, ou par un client jetable avec SOURCE_DB_HOST.
+source_dump() {
+  if [ -n "$SOURCE_DB_HOST" ]; then
+    MYSQL_PWD="$SOURCE_DB_PASSWORD" "$ENGINE" run --rm -e MYSQL_PWD "$CLIENT_IMAGE" \
+      mariadb-dump --host="$SOURCE_DB_HOST" --port="$SOURCE_DB_PORT" "$@"
+  else
+    MYSQL_PWD="$SOURCE_DB_PASSWORD" "$ENGINE" exec -e MYSQL_PWD "$SOURCE_CONTAINER" \
+      mariadb-dump "$@"
+  fi
 }
 
 # Joue un fichier de rapport (00-preconditions.sql, 20-verify.sql) : chaque ligne est
@@ -82,7 +112,8 @@ report() {
 cmd_dump() {
   out=${1:-}
   [ -n "$out" ] || die "usage : reprise.sh dump <fichier>"
-  [ -n "$SOURCE_CONTAINER" ] || die "SOURCE_CONTAINER absent (base du monolithe hors conteneur : README.md, 4)"
+  [ -n "$SOURCE_CONTAINER" ] || [ -n "$SOURCE_DB_HOST" ] ||
+    die "SOURCE_CONTAINER ou SOURCE_DB_HOST absent (base du monolithe hors conteneur : README.md, 4)"
   [ -n "${SOURCE_DB_PASSWORD:-}" ] || die "SOURCE_DB_PASSWORD absent"
   [ ! -e "$out" ] || die "$out existe deja : un vidage n'est jamais ecrase"
 
@@ -97,12 +128,10 @@ cmd_dump() {
   # manga, seule famille de cle reprise (sql/10-transform.sql). Le reste du cache n'a rien a
   # faire dans un fichier qui va circuler. Deux instantanes distincts, ce qui ne pose pas de
   # probleme : les ecritures sont gelees avant le vidage (README.md, 3).
-  MYSQL_PWD="$SOURCE_DB_PASSWORD" "$ENGINE" exec -e MYSQL_PWD "$SOURCE_CONTAINER" \
-    mariadb-dump --user="$SOURCE_DB_USER" --single-transaction --skip-dump-date \
+  source_dump --user="$SOURCE_DB_USER" --single-transaction --skip-dump-date \
     --default-character-set=utf8mb4 --ignore-table="$SOURCE_DATABASE.api_cache" \
     "$SOURCE_DATABASE" > "$partial" || { rm -f "$partial"; die "vidage echoue"; }
-  MYSQL_PWD="$SOURCE_DB_PASSWORD" "$ENGINE" exec -e MYSQL_PWD "$SOURCE_CONTAINER" \
-    mariadb-dump --user="$SOURCE_DB_USER" --single-transaction --skip-dump-date \
+  source_dump --user="$SOURCE_DB_USER" --single-transaction --skip-dump-date \
     --default-character-set=utf8mb4 --where="cache_key LIKE 'edition-watch:%'" \
     "$SOURCE_DATABASE" api_cache >> "$partial" || { rm -f "$partial"; die "vidage du cache echoue"; }
 
@@ -115,8 +144,9 @@ cmd_load() {
   [ -f "$in" ] || die "usage : reprise.sh load <fichier> (fichier introuvable : $in)"
   # Schema de transit recree a chaque chargement : un reste d'essai precedent ne doit jamais
   # se meler au vidage du jour.
+  # `</dev/null` : un client en `run -i` lirait sinon l'entree de l'appelant.
   target_sql -e "DROP DATABASE IF EXISTS acv_legacy;
-                 CREATE DATABASE acv_legacy CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;"
+                 CREATE DATABASE acv_legacy CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;" </dev/null
   target_sql acv_legacy < "$in" || die "chargement echoue"
   log "vidage charge dans acv_legacy"
 }
@@ -156,7 +186,7 @@ cmd_registry() {
 }
 
 cmd_clean() {
-  target_sql -e "DROP DATABASE IF EXISTS acv_legacy;"
+  target_sql -e "DROP DATABASE IF EXISTS acv_legacy;" </dev/null
   log "acv_legacy supprime"
 }
 

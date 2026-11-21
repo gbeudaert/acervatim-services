@@ -3,7 +3,7 @@
 #
 # **Ce fichier ne contient aucun secret.** Il est assemble au deploiement avec
 # `acervatim-secrets.yaml` (non versionne) :
-#   cat ~/acervatim/acervatim-secrets.yaml deploy/acervatim.yaml > ~/acervatim/acervatim.yaml
+#   deploiement.sh (etape 5) -> ~/acervatim-services/config/acervatim.yaml
 #
 # Les onze services partagent une pile reseau (meme pod) : ils se joignent en `localhost`,
 # d'ou les `*_BASE_URL` ci-dessous. C'est la seule difference de configuration avec la stack de

@@ -12,12 +12,15 @@
 #   - les migrations peuvent tourner en initContainer du pod, la base etant deja prete ;
 #   - `systemctl --user restart acervatim` ne touche pas aux donnees.
 #
-# Variante NAS : si la base est deportee (comme pour le monolithe), ne pas installer cette
-# unite et pointer les `DATABASE_URL_*` vers l'hote distant. Rien d'autre ne change.
+# **Pas en production** : depuis la decision D1 du 2026-11-21, les onze schemas vivent sur
+# l'instance MariaDB du monolithe, hors de l'hote, et deploiement.sh n'installe pas cette unite.
+# Elle reste pour une base locale (essai isole) : l'installer, ajouter `acervatim-db.service`
+# aux `Requires=` et `After=` de acervatim.kube, et pointer les `DATABASE_URL_*` sur
+# `acervatim-db`.
 #
 # Installation (rootless) :
 #   1. cp acervatim-db.container ~/.config/containers/systemd/
-#   2. Deposer le mot de passe : ~/acervatim/db.env (chmod 600), contenant
+#   2. Deposer le mot de passe : ~/acervatim-services/db.env (chmod 600), contenant
 #        MARIADB_ROOT_PASSWORD=...
 #        MARIADB_PASSWORD=...
 #   3. systemctl --user daemon-reload && systemctl --user start acervatim-db
@@ -38,11 +41,11 @@ Network=acervatim-services.network
 Environment=MARIADB_USER=acervatim
 # Base d'amorce : les onze schemas sont crees par le script d'init au premier demarrage.
 Environment=MARIADB_DATABASE=acv_gateway
-EnvironmentFile=%h/acervatim/db.env
+EnvironmentFile=%h/acervatim-services/db.env
 Volume=acervatim-db-data:/var/lib/mysql
 # Le script de creation des schemas, monte en lecture seule. MariaDB ne l'execute qu'a la
 # PREMIERE creation du volume - c'est aussi pourquoi il est idempotent (`IF NOT EXISTS`).
-Volume=%h/acervatim/db-init:/docker-entrypoint-initdb.d:ro,Z
+Volume=%h/acervatim-services/db-init:/docker-entrypoint-initdb.d:ro,Z
 HealthCmd=healthcheck.sh --connect --innodb_initialized
 HealthInterval=10s
 HealthRetries=5
