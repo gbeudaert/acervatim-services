@@ -45,7 +45,9 @@ COPY catalog-lego/prisma     ./schemas/catalog-lego
 COPY rebrickable-data/prisma ./schemas/rebrickable-data
 
 COPY deploy/migrate.sh ./migrate.sh
-RUN chmod +x ./migrate.sh && chown -R 1001:0 /opt/app-root/src
+# Fins de ligne LF meme si l'image est construite depuis un arbre de travail Windows : un shebang
+# suivi d'un CR fait echouer l'initContainer (« migrate.sh: No such file or directory »).
+RUN sed -i 's/\r$//' ./migrate.sh && chmod +x ./migrate.sh && chown -R 1001:0 /opt/app-root/src
 
 USER 1001
 

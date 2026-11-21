@@ -1,0 +1,5 @@
+# Scripts shell en LF partout, y compris dans un arbre de travail Windows (core.autocrlf=true) :
+# ils sont copies dans les images (deploy/migrate.sh) et executes sur l'hote (deploiement.sh).
+# Un `#!/bin/sh` suivi d'un CR rend « No such file or directory » au lancement - releve a la
+# repetition du 2026-11-21, ou l'initContainer de migration ne demarrait pas.
+*.sh text eol=lf
