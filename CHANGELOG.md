@@ -9,10 +9,12 @@ ensemble (`deploy/build-images.ps1 -Tag <version>`).
 ## [0.1.0] - 2026-11-21
 
 Premiere version de la constellation : le contrat `/v1/*` du monolithe `acervatim-backend`,
-decoupe en onze services derriere `gateway` (port 3100). **Pas encore deployee** : la
-production tourne sur le monolithe 0.9.0. La bascule complete a ete decidee le 2026-11-16.
+decoupe en onze services derriere `gateway` (port 3100). **En production depuis le
+2026-11-23**, a la place du monolithe 0.9.0 (bascule complete decidee le 2026-11-16) : l'archive
+arm64 de cette etiquette, deroulee sur l'hote par `deploiement.sh`. Le monolithe est arrete, son
+unite mise de cote : `deploiement.sh retour` le relance pendant la fenetre de retour.
 
-### Par rapport au monolithe 0.9.0 en production
+### Par rapport au monolithe 0.9.0, qu'elle remplace en production
 
 - **Manga, recherche d'une serie par son titre** (SD1, SD3) : `GET /v1/search/editions`
   (editions francaises d'une serie MangaDex) et `GET /v1/series-updates` (tomes parus depuis
@@ -70,14 +72,46 @@ production tourne sur le monolithe 0.9.0. La bascule complete a ete decidee le 2
 
 ### Verifie
 
+- **Deploiement de production le 2026-11-23**, sur l'hote arm64 sous Podman rootless : etapes 0 a
+  11 de `deploiement.sh`. Les onze schemas sont migres sur l'instance MariaDB du monolithe (10.3,
+  plus ancienne que celle du developpement), les onze services sont prets, `fumee.sh` est vert.
+  La reprise des donnees de production et leur relecture au nom de chaque utilisateur sont
+  conformes, et le reverse proxy sert la constellation par le port 3100. Premieres lectures
+  depuis l'app (collections, items, pagination) servies sur deux comptes.
 - Repetition complete le 2026-11-21 sous Podman rootless, dans une distribution WSL dediee, en
   amd64 : monolithe 0.9.0 en service sur une instance MariaDB distincte, etapes 0 a 11, puis
   `retour` et `desinstaller` (base du monolithe identique a la somme de controle pres). Premier
   `podman kube play` du manifeste : initContainer, `hostPort`, `envFrom` et Secret fonctionnent.
-- Les douze images se construisent sous Docker en amd64.
+- Les douze images se construisent sous Docker en amd64, et en arm64 sous emulation (archive de
+  1 375 Mio, 110 minutes de construction).
 
 ### Non verifie
 
-- Rien n'a tourne sur l'hote : l'arm64, l'instance MariaDB et le reverse proxy reels restent a
-  eprouver. Les etapes 0 a 7 le font sans toucher au monolithe.
-- La reprise n'a tourne que sur le vidage de developpement, jamais sur les donnees de production.
+- En production : la recherche d'une boite LEGO a travers le gateway, et la suppression d'un
+  compte qui efface ses donnees LEGO.
+- La saga RGPD avec un service arrete, et les mesures de memoire et de latence sous Podman.
+- Brickset avec une vraie cle (`BRICKSET_API_KEY` absente, accord pending) et BoardGameGeek
+  (`BGG_API_TOKEN` vide, jeton pending).
+
+### Problemes connus
+
+Trouves au deploiement du 2026-11-23, a corriger dans une version suivante.
+
+- **Etape 6 et premier demarrage** : l'etape 6 relance l'unite meme quand elle demarre deja
+  (lancee au boot par le linger). Le 2026-11-23, cette relance a coupe la premiere migration
+  d'`acv_cat_lego` : Prisma l'a notee commencee sans fin, puis a refuse toute migration du schema
+  (P3009), et le pod ne demarrait plus. Remede, sur un schema encore vide : supprimer ses tables
+  et `_prisma_migrations`, puis relancer le script.
+- **Controleur memoire des cgroups** : un noyau demarre avec `cgroup_disable=memory` fait echouer
+  `kube play` sur `memory.max` (code 125), parce que le manifeste fixe des limites memoire. Il
+  faut `cgroup_enable=memory` a la ligne de commande du noyau ; l'etape 0 ne le controle pas.
+- **Diagnostic** : quand le journal n'est pas reparti par compte, `journalctl --user`, que le
+  script conseille, ne montre rien. Les sorties d'un conteneur se lisent par
+  `journalctl CONTAINER_NAME=<conteneur>`, avec `sudo` si le compte n'a pas acces au journal.
+- **Etape 10** : le message suppose un reverse proxy sur l'hote (`localhost:3000`). Un proxy sur
+  une autre machine vise l'adresse de l'hote, dont le pare-feu doit laisser passer le port 3100.
+- **`sharing` interroge les quatre catalogs a chaque requete sur une collection** pour en trouver
+  le proprietaire (`GET /internal/collections/:id/owner`), et pas seulement a la creation d'un
+  partage comme le dit son code. Les trois catalogs qui ne l'ont pas repondent `404` et l'ecrivent
+  en `WARN` : rien n'echoue, mais trois appels internes sont de trop. Le gateway connait le type
+  par son registre et pourrait le transmettre.

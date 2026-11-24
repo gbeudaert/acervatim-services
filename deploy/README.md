@@ -127,6 +127,25 @@ reprend a la premiere qui ne l'est pas. Chaque execution a son journal dans
 monolithe ; `sh deploiement.sh desinstaller` retire la constellation et ses schemas avant la
 bascule, sans toucher au monolithe.
 
+**Vus au deploiement de production du 2026-11-23** (le script ne les traite pas encore) :
+
+- **le controleur `memory` des cgroups doit etre actif.** Le manifeste fixe des limites memoire :
+  un noyau demarre avec `cgroup_disable=memory` fait echouer `kube play` sur `memory.max` (code
+  125). `cat /sys/fs/cgroup/user.slice/user-$(id -u).slice/user@$(id -u).service/cgroup.controllers`
+  doit citer `memory` ; sinon, ajouter `cgroup_enable=memory` a la ligne de commande du noyau et
+  redemarrer ;
+- **un reverse proxy sur une autre machine** vise l'adresse de l'hote, pas `localhost` comme le dit
+  l'etape 10, et le pare-feu de l'hote doit laisser passer le port 3100 depuis cette machine ;
+- **les sorties des conteneurs vont au journal** (`LogDriver=journald`) :
+  `journalctl CONTAINER_NAME=acervatim-<service>` les montre, avec `sudo` si le compte n'a pas
+  acces au journal systeme. `journalctl --user`, que le script conseille, ne montre rien quand le
+  journal n'est pas reparti par compte ;
+- **ne pas couper un premier demarrage.** Apres un redemarrage de l'hote, l'unite demarre seule
+  (linger) et joue les migrations. Relancer le script ou arreter l'unite pendant ce temps peut
+  couper une premiere migration : Prisma la note commencee sans fin et refuse ensuite toute
+  migration du schema (P3009), et le pod ne demarre plus. Remede, sur un schema encore vide :
+  supprimer ses tables et `_prisma_migrations`, puis relancer le script.
+
 **Le manifeste joue vit dans `~/acervatim-services/config/`, jamais dans le depot**, parce qu'il
 porte les secrets. `deploiement.sh` le recompose a l'etape 5.
 
@@ -282,6 +301,15 @@ production : rien n'est a reprendre d'elle. `reprise.sh reset-targets` ne touche
 
 ## 7. Ce qui n'a pas ete verifie
 
+**Verifie le 2026-11-23, en production** : l'archive arm64, construite sous emulation, deroulee
+par `deploiement.sh` sur l'hote, etapes 0 a 11. Les onze schemas sont migres sur l'instance
+MariaDB du monolithe, dont la version est plus ancienne que celle du developpement, et les onze
+services sont prets (`fumee.sh` vert). Les secrets sont repris du conteneur du monolithe, la
+reprise du vidage de production est conforme, et `relecture.js` retrouve les collections et les
+items de chaque utilisateur. Le reverse proxy bascule vers le port 3100, et l'adresse publique
+sert la constellation. Ensuite, l'app lit collections et items (pagination comprise) sur deux
+comptes.
+
 **Verifie le 2026-11-16, pour l'entree de `rebrickable-data`**, sous Docker sur un poste de
 developpement amd64, dans un projet compose jetable dont le reseau n'a aucune sortie :
 
@@ -316,15 +344,13 @@ limite a `acervatim`), et un nginx local en guise de reverse proxy :
   initialisation ont laisse 150 connexions orphelines sur l'instance (refus `1040`) ; un
   redemarrage normal n'en laisse aucune. L'etape 4 releve la marge de connexions.
 
-A dire clairement, parce que rien de ce qui suit n'a tourne :
+A dire clairement, parce que rien de ce qui suit n'a ete controle :
 
-- **Rien en arm64 ni sur l'hote** : ni construction arm64 de l'archive (sous emulation), ni
-  `kube play` sur l'hote, ni migrations contre l'instance reelle du monolithe. Les migrations
-  sont ecrites a la main, pas generees par `prisma migrate dev` : le premier demarrage sur
-  l'hote est le vrai test - et c'est precisement pour cela qu'elles echouent bruyamment plutot
-  que silencieusement. Les etapes 0 a 7 de `deploiement.sh` le font sans toucher au monolithe.
-- **L'import des vrais CSV de Rebrickable n'a pas tourne en image de production** : il a tourne
-  en developpement (README racine, 6), et sa memoire a ete mesuree sur des CSV synthetiques.
+- **Le LEGO en production** : ni la recherche d'une boite a travers le gateway, ni la
+  suppression d'un compte qui efface ses donnees LEGO.
+- **L'import des vrais CSV de Rebrickable en image de production** : il a ete controle en
+  developpement (README racine, 6), et sa memoire mesuree sur des CSV synthetiques.
+- **La memoire et la latence sous Podman**, et la saga RGPD avec un service arrete.
 - **`readOnlyRootFilesystem` n'est pas active**, alors qu'il est desormais a portee :
   l'ecriture d'`openapi.json` au bootstrap a ete restreinte au developpement. Ce qui reste a
   verifier est ce que Prisma ecrit dans `/tmp` a l'execution. Un `emptyDir` monte sur `/tmp`

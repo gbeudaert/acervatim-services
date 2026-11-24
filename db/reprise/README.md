@@ -191,6 +191,10 @@ volontaires des cibles detectees (milliseconde, emoji, ligne de registre), secon
 cibles pleines refusee, erreur de FK provoquee en fin de transaction suivie d'une annulation
 totale (aucune ligne dans aucune cible).
 
-**Non verifie** : le jeu sous Podman et sur l'hote de production ; la duree sur le volume reel
-(la repetition du 3 la mesurera) ; un vidage produit par une version de MariaDB plus ancienne
-que celle de la constellation.
+**Verifie le 2026-11-23, en production**, par les etapes 8 et 9 de `deploy/deploiement.sh` :
+vidage de la base du monolithe, produit par une version de MariaDB plus ancienne que celle du
+developpement, reprise `all` puis `registry` sur l'instance du monolithe, controles conformes,
+puis relecture au nom de chaque utilisateur (`deploy/tests/relecture.js`).
+
+**Non verifie** : la duree de la reprise n'a pas ete chronometree a part. Le journal du
+deploiement, dans `~/acervatim-services/journal/` sur l'hote, en garde les heures.

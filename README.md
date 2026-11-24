@@ -154,21 +154,26 @@ reseau interne, pas la limitation principale.
 
 ## 6. Etat, et ce qui reste a faire
 
-**Ce qui est fait** : les dix services compilent, leurs tests unitaires passent, et le contrat
-`/v1/*` est couvert de bout en bout par la table de routage du gateway. `rebrickable-data`, qui
-n'a pas de route `/v1/*`, a en plus tourne contre la vraie base : import complet des CSV
-Rebrickable, puis `unchanged` au second passage.
+**La constellation sert la production depuis le 2026-11-23**, a la place du monolithe. Les onze
+services tournent dans un pod Podman sur l'hote, les onze schemas sur l'instance MariaDB du
+monolithe, et le reverse proxy vise le gateway (port 3100). Le deploiement, la reprise des
+donnees de production et la bascule du proxy ont suivi [`deploy/`](deploy/README.md#3-installation--une-archive-un-script)
+(etapes 0 a 11 de `deploiement.sh`). Le monolithe est arrete et son unite mise de cote, pour un
+retour pendant la fenetre de retour. Les problemes trouves ce jour-la sont dans le
+[`CHANGELOG`](CHANGELOG.md).
+
+**Ce qui est fait** : les onze services compilent, leurs tests unitaires passent, et le contrat
+`/v1/*` est couvert de bout en bout par la table de routage du gateway. Les migrations, ecrites
+a la main, se sont appliquees sans erreur en developpement, en repetition sous Podman, puis en
+production. La reprise des donnees ([`db/reprise/`](db/reprise/README.md)) a tourne sur le
+vidage de production, et la relecture au nom de chaque utilisateur est conforme.
+`rebrickable-data`, qui n'a pas de route `/v1/*`, a en plus tourne contre la vraie base en
+developpement : import complet des CSV Rebrickable, puis `unchanged` au second passage.
 
 **Ce qui ne l'est pas, et qui compte** :
 
-- **Les migrations n'ont tourne qu'en developpement.** Ecrites a la main, pas generees par
-  `migrate dev`, elles se sont appliquees sans erreur au premier `up-bg` (2026-11-02), et le
-  parcours manga est passe de bout en bout a travers le gateway. Rien n'a encore tourne sous
-  Podman.
-- **La bascule exige une reprise des donnees**, sinon le proxy servirait des schemas vides :
-  [`db/reprise/`](db/reprise/README.md) (`acv_rebrickable` excepte, qui n'a rien a reprendre et
-  se remplit par l'import des CSV). Elle a ete repetee en developpement, jamais sur un
-  vidage de production - c'est cette repetition qui dira la duree de la fenetre.
+- **Le LEGO n'a pas ete eprouve en production** : ni la recherche d'une boite a travers le
+  gateway, ni la suppression d'un compte qui efface ses donnees LEGO.
 - **Aucune mesure du 4 n'a ete produite** : RSS total au repos, p95 de `GET /v1/collections` et
   de `GET /v1/collections/:id/items`, ecart du registre apres re-scan, jobs RGPD non termines.
   L'architecture demande explicitement de **mesurer et non de supposer** avant chaque palier -
@@ -183,5 +188,6 @@ Rebrickable, puis `unchanged` au second passage.
   [`sharing`](sharing/README.md#7-tests).
 - **La reserve du TL;DR de l'architecture reste entiere.** Le domaine tient en ~13 000 LOC
   servies a un unique client Android ; dix processus Node/Nest representent de l'ordre de 1,1 a
-  1,5 Go de RSS au repos. Le phasage etait concu pour etre **arretable a chaque palier** - ce
-  code livre la cible complete, il ne dit pas qu'il faut la deployer.
+  1,5 Go de RSS au repos. Le phasage etait concu pour etre **arretable a chaque palier**. La
+  bascule complete a ete decidee le 2026-11-16 malgre cette reserve : ce sont les mesures du 4,
+  toujours a produire, qui diront si elle tient.
